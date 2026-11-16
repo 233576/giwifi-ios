@@ -10,27 +10,36 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    statusCard
-                    profileStrip
-                    actionRow
-                    autoRow
-                    infoCard
-                    logPreview
+            ZStack {
+                AuroraBackground()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        statusCard
+                        profileStrip
+                        actionRow
+                        autoRow
+                        infoCard
+                        logPreview
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 28)
+                .scrollIndicators(.hidden)
             }
-            .background(Color(.systemGroupedBackground))
             .navigationTitle("GiWiFi 助手")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showLogs = true
                     } label: {
                         Image(systemName: "text.alignleft")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .glassPill()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -38,6 +47,9 @@ struct RootView: View {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .glassPill()
                     }
                 }
             }
@@ -70,6 +82,7 @@ struct RootView: View {
                 Text(store.errorText ?? "")
             }
         }
+        .preferredColorScheme(.dark)
     }
 
     /// Portal 地址（手填优先，否则用默认站点）。
@@ -89,51 +102,65 @@ struct RootView: View {
     // MARK: - 状态卡
 
     private var statusCard: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .stroke(color.opacity(0.18), lineWidth: 14)
-                Circle()
-                    .trim(from: 0, to: store.state == .connecting ? 0.75 : (store.state == .online ? 1 : 0.25))
-                    .stroke(color, style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                    .rotationEffect(.degrees(store.state == .connecting ? 0 : -90))
-                    .animation(.easeInOut(duration: 0.6), value: store.state)
-                VStack(spacing: 4) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 30, weight: .semibold))
-                    Text(store.state.title)
-                        .font(.headline)
-                }
-                .foregroundStyle(color)
-            }
-            .frame(width: 132, height: 132)
-            .padding(.top, 6)
+        VStack(spacing: 14) {
+            GlassStatusRing(
+                progress: ringProgress,
+                gradient: stateGradient,
+                symbol: symbol,
+                title: store.state.title,
+                animating: store.state == .connecting
+            )
+            .frame(width: 148, height: 148)
+            .padding(.top, 8)
 
             Text(store.detail)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.78))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
 
-            Text(store.settings.username.isEmpty ? "未填写账号" : store.settings.username)
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle")
+                    .font(.caption)
+                Text(store.settings.username.isEmpty ? "未填写账号" : store.settings.username)
+                    .font(.footnote.monospacedDigit())
+            }
+            .foregroundStyle(.white.opacity(0.62))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassPill()
         }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 18)
         .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCard()
     }
 
-    private var color: Color {
+    private var ringProgress: CGFloat {
         switch store.state {
-        case .online: return .green
-        case .connecting: return .orange
-        case .failed: return .red
-        case .offline: return .gray
-        case .idle: return .accentColor
+        case .online: return 1.0
+        case .connecting: return 0.72
+        case .failed: return 0.55
+        case .offline: return 0.22
+        case .idle: return 0.32
+        }
+    }
+
+    private var stateGradient: LinearGradient {
+        switch store.state {
+        case .online:
+            return LinearGradient(colors: [Glass.onlineStart, Glass.onlineEnd],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .connecting:
+            return LinearGradient(colors: [Glass.warnStart, Glass.warnEnd],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .failed:
+            return LinearGradient(colors: [Glass.failStart, Glass.failEnd],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .offline, .idle:
+            return LinearGradient(colors: [Glass.accentStart, Glass.accentEnd],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
 
@@ -150,17 +177,19 @@ struct RootView: View {
     // MARK: - 多端切换
 
     private var profileStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("设备身份")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+                GlassSectionHeader(title: "设备身份")
                 Button {
                     showingProfileEditor = true
                 } label: {
                     Label("新建", systemImage: "plus.circle")
-                        .font(.footnote)
+                        .font(.footnote.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .glassPill()
                 }
+                .buttonStyle(.plain)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -173,8 +202,7 @@ struct RootView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCard()
     }
 
     private func profileChip(_ profile: TerminalProfile) -> some View {
@@ -182,8 +210,8 @@ struct RootView: View {
         return Button {
             store.selectProfile(profile.id)
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
                     Image(systemName: profile.staType == "pad" ? "ipad" : "iphone")
                         .font(.caption)
                     Text(profile.name)
@@ -191,13 +219,12 @@ struct RootView: View {
                 }
                 Text(profile.staType == "pad" ? "平板 · btype=\(profile.btype)" : "手机 · btype=\(profile.btype)")
                     .font(.caption2)
-                    .foregroundStyle(selected ? Color.white.opacity(0.85) : Color.secondary)
+                    .foregroundStyle(selected ? Color.white.opacity(0.85) : Color.white.opacity(0.5))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(selected ? Color.accentColor : Color(.tertiarySystemFill))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(selected ? Color.white : Color.white.opacity(0.85))
+            .glassPill(selected: selected)
         }
         .buttonStyle(.plain)
     }
@@ -205,11 +232,11 @@ struct RootView: View {
     // MARK: - 操作
 
     private var actionRow: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Button {
                 Task { await store.login() }
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     if store.state == .connecting {
                         ProgressView().tint(.white)
                     } else {
@@ -218,24 +245,20 @@ struct RootView: View {
                     Text(store.state == .connecting ? "认证中…" : "立即认证")
                         .fontWeight(.semibold)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
                 .foregroundStyle(.white)
-                .background(store.state == .connecting ? Color.gray : Color.accentColor)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
+            .buttonStyle(GlassButtonStyle(tint: Glass.accentStart, height: 52))
             .disabled(store.state == .connecting)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
                     Task { await store.refreshState() }
                 } label: {
                     Label("查状态", systemImage: "magnifyingglass")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.92))
                 }
+                .buttonStyle(GlassButtonStyle(height: 46))
 
                 Button {
                     if store.autoRunning {
@@ -246,68 +269,89 @@ struct RootView: View {
                 } label: {
                     Label(store.autoRunning ? "停止守护" : "自动守护",
                           systemImage: store.autoRunning ? "stop.circle" : "arrow.triangle.2.circlepath")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(store.autoRunning ? Color.white : Color.white.opacity(0.92))
                 }
+                .buttonStyle(GlassButtonStyle(
+                    tint: store.autoRunning ? Glass.onlineStart : nil,
+                    height: 46
+                ))
             }
-            .font(.subheadline)
 
             Button {
                 openPortal()
             } label: {
                 Label("打开 Portal 网页（补全资料 / 网页登录）", systemImage: "safari")
-                    .font(.footnote)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassButtonStyle(height: 44))
         }
     }
 
     private var autoRow: some View {
-        Toggle(isOn: Binding(
-            get: { store.settings.autoReconnect },
-            set: { store.setAutoReconnect($0) }
-        )) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 14) {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .font(.title3)
+                .foregroundStyle(Glass.accentStart)
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text("掉线自动重连")
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.92))
                 Text("每 \(Int(store.settings.reconnectInterval)) 秒检查一次")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.55))
             }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { store.settings.autoReconnect },
+                set: { store.setAutoReconnect($0) }
+            ))
+            .labelsHidden()
+            .tint(Glass.onlineStart)
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCard()
     }
 
     // MARK: - 信息
 
     private var infoCard: some View {
         VStack(spacing: 0) {
+            GlassSectionHeader(title: "连接信息")
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
             infoLine("当前档案", store.currentProfile.subtitle)
-            Divider().padding(.leading, 16)
+            dividerLine()
             infoLine("服务端 MAC", store.serverMac.isEmpty ? "未获取" : store.serverMac)
-            Divider().padding(.leading, 16)
+            dividerLine()
             infoLine("Portal", store.portal.isEmpty ? "未探测" : store.portal)
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.bottom, 6)
+        .glassCard()
+    }
+
+    private func dividerLine() -> some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(height: 1)
+            .padding(.leading, 16)
     }
 
     private func infoLine(_ title: String, _ value: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(title)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(width: 72, alignment: .leading)
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 76, alignment: .leading)
             Text(value)
                 .font(.footnote)
+                .foregroundStyle(.white.opacity(0.88))
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -318,30 +362,36 @@ struct RootView: View {
     // MARK: - 日志预览
 
     private var logPreview: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("运行日志")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Button("全部") { showLogs = true }
-                    .font(.footnote)
+                GlassSectionHeader(title: "运行日志")
+                Button {
+                    showLogs = true
+                } label: {
+                    Text("全部")
+                        .font(.footnote.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .glassPill()
+                }
+                .buttonStyle(.plain)
             }
 
             if store.logs.isEmpty {
                 Text("还没有记录")
                     .font(.footnote)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.white.opacity(0.45))
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(store.logs.suffix(6)) { line in
                         HStack(alignment: .top, spacing: 8) {
                             Text(line.stamp)
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.white.opacity(0.38))
                             Text(line.text)
                                 .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.white.opacity(0.72))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -349,8 +399,7 @@ struct RootView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCard(elevated: false)
     }
 }
 
