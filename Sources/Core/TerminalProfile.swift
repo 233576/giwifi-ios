@@ -93,6 +93,50 @@ struct AccountSettings: Codable {
     /// 检测到未认证时是否自动换绑。
     var autoRebind: Bool
     var serviceType: Int
+    /// 指定 Portal 站点；留空表示走 APK 原始的 115.159.209.137 探测。
+    var portalOverride: String
+
+    enum CodingKeys: String, CodingKey {
+        case username, password, appUuid, selectedProfileID, customProfiles
+        case autoReconnect, reconnectInterval, autoRebind, serviceType, portalOverride
+    }
+
+    init(username: String, password: String, appUuid: String, selectedProfileID: UUID,
+         customProfiles: [TerminalProfile], autoReconnect: Bool, reconnectInterval: Double,
+         autoRebind: Bool, serviceType: Int,
+         portalOverride: String = GiWifiProtocol.defaultPortal) {
+        self.username = username
+        self.password = password
+        self.appUuid = appUuid
+        self.selectedProfileID = selectedProfileID
+        self.customProfiles = customProfiles
+        self.autoReconnect = autoReconnect
+        self.reconnectInterval = reconnectInterval
+        self.autoRebind = autoRebind
+        self.serviceType = serviceType
+        self.portalOverride = portalOverride
+    }
+
+    /// 旧版本缓存里没有 `portalOverride`，缺字段时补默认值，避免整份设置被丢弃。
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        username = try container.decode(String.self, forKey: .username)
+        password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
+        appUuid = try container.decodeIfPresent(String.self, forKey: .appUuid)
+            ?? GiWifiProtocol.makeAppUuid()
+        selectedProfileID = try container.decodeIfPresent(UUID.self, forKey: .selectedProfileID)
+            ?? TerminalProfile.android.id
+        customProfiles = try container.decodeIfPresent([TerminalProfile].self,
+                                                       forKey: .customProfiles) ?? []
+        autoReconnect = try container.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? true
+        reconnectInterval = try container.decodeIfPresent(Double.self,
+                                                          forKey: .reconnectInterval) ?? 30
+        autoRebind = try container.decodeIfPresent(Bool.self, forKey: .autoRebind) ?? true
+        serviceType = try container.decodeIfPresent(Int.self, forKey: .serviceType)
+            ?? GiWifiProtocol.defaultServiceType
+        portalOverride = try container.decodeIfPresent(String.self, forKey: .portalOverride)
+            ?? GiWifiProtocol.defaultPortal
+    }
 
     static func `default`() -> AccountSettings {
         AccountSettings(
@@ -104,7 +148,8 @@ struct AccountSettings: Codable {
             autoReconnect: true,
             reconnectInterval: 30,
             autoRebind: true,
-            serviceType: GiWifiProtocol.defaultServiceType
+            serviceType: GiWifiProtocol.defaultServiceType,
+            portalOverride: GiWifiProtocol.defaultPortal
         )
     }
 
