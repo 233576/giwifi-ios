@@ -238,12 +238,12 @@ if ($run.conclusion -ne 'success') {
 
 # ---------- 7. 下载 artifact ----------
 $arts = Invoke-Gh GET "/repos/$Owner/$Repo/actions/runs/$($run.id)/artifacts"
-$art = $arts.artifacts | Where-Object { $_.name -like '*ipa*' } | Select-Object -First 1
+$art = $arts.artifacts | Where-Object { $_.name -like '*ipa*' -and $_.name -notlike '*log*' } | Select-Object -First 1
 if (-not $art) { throw "这次运行没有 ipa artifact。" }
 
 $dist = Join-Path $RootDir 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$zipPath = Join-Path $dist 'ZhengFang-unsigned-ipa.zip'
+$zipPath = Join-Path $dist "$($art.name).zip"
 
 # artifact zip 会 302 到 S3，那里不接受 Authorization 头，手动跟跳转
 $handler = New-Object System.Net.Http.HttpClientHandler
@@ -263,6 +263,7 @@ $bytes = $anon.GetByteArrayAsync($location).GetAwaiter().GetResult()
 [IO.File]::WriteAllBytes($zipPath, $bytes)
 
 Expand-Archive -Path $zipPath -DestinationPath $dist -Force
+Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
 Get-ChildItem $dist | Select-Object Name, Length | Format-Table -AutoSize
 
 $ipa = Get-ChildItem $dist -Filter *.ipa -Recurse | Select-Object -First 1
