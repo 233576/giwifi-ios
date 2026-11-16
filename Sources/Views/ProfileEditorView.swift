@@ -22,7 +22,7 @@ struct ProfileEditorView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AuroraBackground()
+                FlatBackground()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -39,11 +39,12 @@ struct ProfileEditorView: View {
             }
             .navigationTitle(isNew ? "新建设备档案" : "编辑设备档案")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Flat.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(Flat.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -54,7 +55,7 @@ struct ProfileEditorView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 6)
-                            .glassPill(selected: canSave)
+                            .flatPill(selected: canSave)
                     }
                     .disabled(!canSave)
                     .opacity(canSave ? 1 : 0.45)
@@ -73,17 +74,17 @@ struct ProfileEditorView: View {
 
     private var identityCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GlassSectionHeader(title: "身份")
+            FlatSectionHeader(title: "身份")
 
             HStack(spacing: 10) {
                 Image(systemName: "tag.fill")
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Flat.textTertiary)
                     .frame(width: 18)
                 TextField("档案名称（例如 我的 iPad）", text: $name)
                     .foregroundStyle(.white)
             }
-            .glassField()
+            .flatField()
 
             Picker("类型 btype", selection: $btype) {
                 Text("1 · 手机").tag("1")
@@ -99,17 +100,17 @@ struct ProfileEditorView: View {
 
             Text("btype 与 staType 必须匹配：手机 1/phone，平板 2/pad。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 机型
 
     private var modelCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "机型描述 staModel")
+            FlatSectionHeader(title: "机型描述 staModel")
 
             VStack(spacing: 10) {
                 labeledField("厂商", "如 Xiaomi", $manufacturer)
@@ -125,10 +126,10 @@ struct ProfileEditorView: View {
                     .font(.system(.caption2, design: .monospaced))
                     .lineLimit(2)
             }
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(Flat.textSecondary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     private func labeledField(_ label: String, _ placeholder: String,
@@ -137,7 +138,7 @@ struct ProfileEditorView: View {
         HStack(spacing: 10) {
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(Flat.textSecondary)
                 .frame(width: 66, alignment: .leading)
             TextField(placeholder, text: text)
                 .keyboardType(keyboard)
@@ -145,40 +146,40 @@ struct ProfileEditorView: View {
                 .textInputAutocapitalization(.never)
                 .foregroundStyle(.white)
         }
-        .glassField(radius: 12)
+        .flatField(radius: 12)
     }
 
     // MARK: - MAC
 
     private var macCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "伪装 MAC")
+            FlatSectionHeader(title: "伪装 MAC")
 
             HStack(spacing: 10) {
                 Image(systemName: "number")
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Flat.textTertiary)
                     .frame(width: 18)
                 TextField("留空则用本机 / 服务端返回的 MAC", text: $macOverride)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
                     .foregroundStyle(.white)
             }
-            .glassField()
+            .flatField()
 
             Text("iOS 读不到真实 MAC，这里填的地址会直接写进认证报文；留空则按 IP 识别。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 快速填充
 
     private var presetCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "快速填充")
+            FlatSectionHeader(title: "快速填充")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -188,10 +189,10 @@ struct ProfileEditorView: View {
                         } label: {
                             Text(preset.name)
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.9))
+                                .foregroundStyle(Flat.textPrimary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .glassPill()
+                                .flatPill()
                         }
                         .buttonStyle(.plain)
                     }
@@ -200,7 +201,7 @@ struct ProfileEditorView: View {
             }
         }
         .padding(16)
-        .glassCard(elevated: false)
+        .flatCard(fill: Flat.surfaceLow)
     }
 
     private var staModelValue: String {
