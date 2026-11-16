@@ -24,11 +24,13 @@ final class GiWifiClient {
     private let session: URLSession
     private let log: (String) -> Void
     private let portalOverride: String
+    private let nasNameOverride: String
     private var cachedPortal: URL?
 
     /// - Parameter portalOverride: 指定 Portal（如 `http://100.100.9.2/gportal/web/login`）。
     ///   非空时跳过 115.159.209.137 探测，直接用这个站点。
-    init(portalOverride: String = "", log: @escaping (String) -> Void = { _ in }) {
+    init(portalOverride: String = "", nasName: String = "",
+         log: @escaping (String) -> Void = { _ in }) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 25
@@ -37,6 +39,7 @@ final class GiWifiClient {
         self.session = URLSession(configuration: configuration)
         self.log = log
         self.portalOverride = portalOverride
+        self.nasNameOverride = nasName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - 登录
@@ -67,19 +70,24 @@ final class GiWifiClient {
                 }
             }
 
-            // 状态查询
+            // 状态查询：该接口按 userIp 返回本机会话，未认证时 resultCode 也可能非 0，
+            // 所以无论成功与否都要读 data —— 里面的 nasName / userMac 是服务端真值。
             let state = await queryAuthState(context: context, username: username, appUuid: appUuid)
-            if let state, state.isSuccess {
-                if let serverMac = state.string("userMac") ?? state.string("staMac"),
+            if let state {
+                if let serverMac = state.string("userMac") ?? state.string("staMac")
+                    ?? state.string("usermac") ?? state.string("clientMac"),
                    NetworkIdentity.isUsableMac(serverMac) {
                     context.userMac = NetworkIdentity.normalizeMac(serverMac)
                     log("服务端识别 MAC：\(context.userMac)")
                 }
-                if let nasName = state.string("nasName") ?? state.string("wlanacname"),
-                   !nasName.isEmpty {
+                if nasNameOverride.isEmpty,
+                   let nasName = state.string("nasName") ?? state.string("wlanacname")
+                    ?? state.string("nas_name"),
+                   !nasName.isEmpty, nasName != context.nasName {
+                    log("服务端 nasName：\(nasName)（本地此前为 \(context.nasName.isEmpty ? "空" : context.nasName)）")
                     context.nasName = nasName
                 }
-                if state.isOnline {
+                if state.isSuccess, state.isOnline {
                     log("当前终端已在线（authState=\(state.authState ?? -1)）")
                     return Result(online: true, message: state.displayText,
                                   portalOrigin: context.portal.absoluteString,
@@ -97,6 +105,33 @@ final class GiWifiClient {
                               portalOrigin: context.portal.absoluteString,
                               serverMac: context.userMac, authState: firstAuth.authState)
             }
+
+            // CHALLENGE_ERR_DENY（99）：几乎都是 nasName 与实际网关不一致，
+            // 常见是漏掉 / 多出一个后缀（如 GiWiFi_lnsf vs 真实的 GiWiFi_lnsfHG）。
+            if let firstAuth, !firstAuth.isSuccess,
+               firstAuth.resultCode == 99 || firstAuth.message.contains("CHALLENGE") {
+                for candidate in Self.nasNameVariants(context.nasName).prefix(2) {
+                    log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试（等 5 秒避开频率限制）")
+                    try? await Task.sleep(nanoseconds: 5_200_000_000)
+                    var retryContext = context
+                    retryContext.nasName = candidate
+                    let retry = await authLogin(context: retryContext, username: username,
+                                                password: password, profile: profile, appUuid: appUuid)
+                    log("重试：resultCode=\(retry?.resultCode.map(String.init) ?? "nil") \(retry?.message ?? "无响应")")
+                    if let retry, retry.isSuccess {
+                        return Result(online: true, message: retry.displayText,
+                                      portalOrigin: retryContext.portal.absoluteString,
+                                      serverMac: retryContext.userMac, authState: retry.authState)
+                    }
+                    if let retry, retry.resultCode == 108 {
+                        // 身份层已通过，只是账号密码不对 —— 再换 nasName 也没意义
+                        return Result(online: false, message: retry.displayText,
+                                      portalOrigin: retryContext.portal.absoluteString,
+                                      serverMac: retryContext.userMac, authState: retry.authState)
+                    }
+                }
+            }
+
 
             // 设备冲突 → 换绑
             if allowRebind, let firstAuth, firstAuth.requiresRebind {
@@ -194,61 +229,97 @@ final class GiWifiClient {
         }
         log("本机 IP：\(identity.ipv4)（\(identity.interfaceName)）")
 
-        var nasName = ""
-        if let components = URLComponents(url: portal, resolvingAgainstBaseURL: false),
+        var nasName = nasNameOverride
+        if nasName.isEmpty,
+           let components = URLComponents(url: portal, resolvingAgainstBaseURL: false),
            let value = components.queryItems?.first(where: { $0.name.lowercased() == "wlanacname" })?.value {
             nasName = value
         }
-        // 手填的 Portal 通常不带 wlanacname，抓一次首页把它补上（authLogin 要这个字段）。
-        if nasName.isEmpty {
-            nasName = await harvestNasName(portal: portal)
+        // 手填的 Portal 通常不带 wlanacname，抓一次首页把 nasName 与网关看到的 MAC 补上
+        // （authLogin 要这两个字段，缺 MAC 时服务端会回 CHALLENGE_ERR_DENY）。
+        var userMac = identity.mac
+        if nasName.isEmpty || !NetworkIdentity.isUsableMac(userMac) {
+            let meta = await harvestPortalMeta(portal: portal)
+            if nasName.isEmpty { nasName = meta.nasName }
+            if !NetworkIdentity.isUsableMac(userMac) { userMac = meta.mac }
         }
 
         return Context(portal: portal,
                        userIp: identity.ipv4,
-                       userMac: identity.mac,
+                       userMac: userMac,
                        nasName: nasName,
                        gatewayIp: "")
     }
 
-    /// 取 Portal 首页，从最终 URL 或 HTML 里找 `wlanacname` / `nasName`。
-    private func harvestNasName(portal: URL) async -> String {
+    /// 取 Portal 首页，从最终 URL 或 HTML 里找 `wlanacname` / `nasName` 与终端 MAC。
+    private func harvestPortalMeta(portal: URL) async -> (nasName: String, mac: String) {
         var request = URLRequest(url: portal)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
         request.setValue(GiWifiProtocol.discoveryUserAgent, forHTTPHeaderField: "User-Agent")
+        var nasName = ""
+        var mac = ""
         do {
             let (data, response) = try await session.data(for: request)
-            if let http = response as? HTTPURLResponse,
-               let finalURL = http.url,
-               let components = URLComponents(url: finalURL, resolvingAgainstBaseURL: false),
-               let value = components.queryItems?.first(where: {
-                   let name = $0.name.lowercased()
-                   return name == "wlanacname" || name == "nasname" || name == "nas_name"
-               })?.value, !value.isEmpty {
-                log("从 Portal 跳转拿到 nasName：\(value)")
-                return value
+            var haystack = String(data: data, encoding: .utf8) ?? ""
+            if let http = response as? HTTPURLResponse, let finalURL = http.url {
+                haystack += " " + finalURL.absoluteString
             }
-            let html = String(data: data, encoding: .utf8) ?? ""
             for pattern in [#"wlanacname=([A-Za-z0-9\-_]+)"#,
                             #""nasName"\s*:\s*"([^"]+)""#,
                             #"name=["']nasName["'][^>]*value=["']([^"']+)["']"#] {
-                if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-                   let match = regex.firstMatch(in: html, options: [],
-                                                range: NSRange(html.startIndex..., in: html)),
-                   match.numberOfRanges > 1,
-                   let range = Range(match.range(at: 1), in: html) {
-                    let value = String(html[range])
-                    if !value.isEmpty {
-                        log("从 Portal 页面拿到 nasName：\(value)")
-                        return value
-                    }
+                if let value = Self.firstGroup(pattern, in: haystack), !value.isEmpty {
+                    nasName = value
+                    break
                 }
             }
+            for pattern in [#"name=["']userMac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
+                            #""userMac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
+                            #"name=["']staMac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
+                            #""wlanusermac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
+                            #""clientMac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
+                            #"usermac=([0-9A-Fa-f:\-]{11,17})"#] {
+                if let value = Self.firstGroup(pattern, in: haystack),
+                   NetworkIdentity.isUsableMac(value) {
+                    mac = NetworkIdentity.normalizeMac(value)
+                    break
+                }
+            }
+            if !nasName.isEmpty { log("Portal 首页 nasName：\(nasName)") }
+            if !mac.isEmpty { log("Portal 首页 MAC：\(mac)") }
         } catch {
             log("获取 Portal 首页失败：\(error.localizedDescription)")
         }
-        return ""
+        return (nasName, mac)
+    }
+
+    /// 正则取第一个捕获组。
+    private static func firstGroup(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: text, options: [],
+                                           range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[range])
+    }
+
+    /// nasName 兜底候选：网关名常带后缀（HG / BRAS 等），HTML 抓到的往往少了后缀。
+    static func nasNameVariants(_ raw: String) -> [String] {
+        let base = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return [] }
+        let suffixes = ["HG", "BRAS", "bras", "Bras"]
+        var stripped = base
+        for suffix in suffixes where base.hasSuffix(suffix) && base.count > suffix.count {
+            stripped = String(base.dropLast(suffix.count))
+            break
+        }
+        var out: [String] = []
+        for suffix in suffixes {
+            let candidate = stripped + suffix
+            if candidate != base && !out.contains(candidate) { out.append(candidate) }
+        }
+        if stripped != base && !out.contains(stripped) { out.append(stripped) }
+        return out
     }
 
     /// 规范化手填的 Portal：补 `http://`、校验 host、保留 query（`wlanacname` 等参数有用）。
