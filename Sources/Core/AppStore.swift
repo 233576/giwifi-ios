@@ -35,7 +35,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    @Published private(set) var settings: AccountSettings
+    @Published private(set) var settings: AccountSettings = AccountSettings.default()
     @Published private(set) var state: ConnectState = .idle
     @Published private(set) var detail: String = "连接校园网 Wi-Fi 后点「立即认证」"
     @Published private(set) var portal: String = ""
@@ -48,16 +48,19 @@ final class AppStore: ObservableObject {
     private static let settingsKey = "giwifi.settings.v1"
     private static let logLimit = 300
 
-    nonisolated init() {
-        var loaded = AccountSettings.default()
-        if let data = UserDefaults.standard.data(forKey: AppStore.settingsKey),
+    nonisolated init() {}
+
+    /// 从 UserDefaults 与钥匙串恢复上次的账号与参数。
+    func restore() {
+        var loaded = settings
+        if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
            let decoded = try? JSONDecoder().decode(AccountSettings.self, from: data) {
             loaded = decoded
         }
         if let password = Keychain.load(), !password.isEmpty {
             loaded.password = password
         }
-        self.settings = loaded
+        settings = loaded
     }
 
     // MARK: - 设置读写
