@@ -82,7 +82,11 @@ final class GiWifiClient {
                     context.userMac = NetworkIdentity.normalizeMac(serverMac)
                     log("服务端识别 MAC：\(context.userMac)")
                 }
-                if nasNameOverride.isEmpty,
+                // 注意：未认证的 IP，queryAuthState 报的 nasName 可能是入口默认值（实测本机
+                // 未认证时服务端回 GiWiFi_lnsf，而已认证会话回 GiWiFi_lnsfHG），
+                // 直接采纳会把已经对的网关名改错。只有会话真的建立过（在线 / 有 MAC）才信它。
+                let serverKnowsSession = state.isOnline || !context.userMac.isEmpty
+                if nasNameOverride.isEmpty, serverKnowsSession,
                    let nasName = state.string("nasName") ?? state.string("wlanacname")
                     ?? state.string("nas_name"),
                    !nasName.isEmpty, nasName != context.nasName {
