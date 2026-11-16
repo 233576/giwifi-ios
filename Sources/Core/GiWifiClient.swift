@@ -23,9 +23,12 @@ final class GiWifiClient {
 
     private let session: URLSession
     private let log: (String) -> Void
+    private let portalOverride: String
     private var cachedPortal: URL?
 
-    init(log: @escaping (String) -> Void = { _ in }) {
+    /// - Parameter portalOverride: 指定 Portal（如 `http://100.100.9.2/gportal/web/login`）。
+    ///   非空时跳过 115.159.209.137 探测，直接用这个站点。
+    init(portalOverride: String = "", log: @escaping (String) -> Void = { _ in }) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 25
@@ -33,6 +36,7 @@ final class GiWifiClient {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.session = URLSession(configuration: configuration)
         self.log = log
+        self.portalOverride = portalOverride
     }
 
     // MARK: - 登录
@@ -181,7 +185,13 @@ final class GiWifiClient {
             throw Failure.message("未获取到 Wi-Fi 的 IPv4 地址，请先连接校园网 Wi-Fi")
         }
 
-        let portal = await discoverPortal()
+        let portal: URL
+        if let manual = GiWifiClient.normalizedPortalURL(portalOverride) {
+            portal = manual
+            log("使用指定 Portal：\(manual.absoluteString)")
+        } else {
+            portal = await discoverPortal()
+        }
         log("本机 IP：\(identity.ipv4)（\(identity.interfaceName)）")
 
         var nasName = ""
@@ -195,6 +205,25 @@ final class GiWifiClient {
                        userMac: identity.mac,
                        nasName: nasName,
                        gatewayIp: "")
+    }
+
+    /// 规范化手填的 Portal：补 `http://`、校验 host、保留 query（`wlanacname` 等参数有用）。
+    static func normalizedPortalURL(_ raw: String) -> URL? {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let lower = text.lowercased()
+        if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
+            text = "http://" + text
+        }
+        guard var components = URLComponents(string: text),
+              let host = components.host, !host.isEmpty else { return nil }
+        // Portal 接口一律明文 http（客户端签名也不带 TLS）
+        components.scheme = "http"
+        components.fragment = nil
+        if components.path.isEmpty || components.path == "/" {
+            components.path = "/gportal/web/login"
+        }
+        return components.url
     }
 
     /// 打固定探测地址，从 301/302/303/307/308 的 Location 或正文里的 URL 抓 Portal。
