@@ -309,6 +309,7 @@ final class GiWifiClient {
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         var nasName = ""
         var mac = ""
+        var requestIp = ""
         do {
             let (data, response) = try await session.data(for: request)
             var haystack = String(data: data, encoding: .utf8) ?? ""
@@ -327,7 +328,6 @@ final class GiWifiClient {
             }
             // 页面会把「服务端看到的源 IP」回显在 request_ip / sta_ip 里。
             // 认证时 userIp 必须等于这个地址，否则网关回 CHALLENGE_ERR_DENY。
-            var requestIp = ""
             for pattern in [#"name=["']request_ip["'][^>]*value=["']([0-9\.]+)["']"#,
                             #"name=["']sta_ip["'][^>]*value=["']([0-9\.]+)["']"#] {
                 if let value = Self.firstGroup(pattern, in: haystack), !value.isEmpty,
