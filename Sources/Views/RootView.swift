@@ -62,8 +62,8 @@ struct RootView: View {
                 get: { store.errorText != nil },
                 set: { if !$0 { store.clearError() } }
             )) {
-                if store.needsProfile {
-                    Button("打开 Portal 网页") { openPortal() }
+                if store.needsProfile || store.needsWebAuth {
+                    Button("内置网页登录") { openPortal() }
                 }
                 Button("好", role: .cancel) { store.clearError() }
             } message: {
