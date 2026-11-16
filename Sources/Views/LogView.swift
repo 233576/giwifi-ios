@@ -9,14 +9,14 @@ struct LogView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AuroraBackground()
+                FlatBackground()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         if store.logs.isEmpty {
                             Text("还没有日志记录")
                                 .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.45))
+                                .foregroundStyle(Flat.textTertiary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.top, 20)
                         } else {
@@ -27,13 +27,13 @@ struct LogView: View {
                                         .foregroundStyle(.white.opacity(0.35))
                                     Text(line.text)
                                         .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(.white.opacity(0.8))
+                                        .foregroundStyle(Flat.textSecondary)
                                         .textSelection(.enabled)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 9)
-                                .glassField(radius: 10)
+                                .flatField(radius: 10)
                             }
                         }
                     }
@@ -45,11 +45,12 @@ struct LogView: View {
             }
             .navigationTitle("运行日志")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Flat.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(Flat.textSecondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 10) {
@@ -60,7 +61,7 @@ struct LogView: View {
                             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                                 .font(.system(size: 14, weight: .semibold))
                                 .frame(width: 32, height: 32)
-                                .glassPill()
+                                .flatPill()
                         }
                         .buttonStyle(.plain)
 
@@ -69,9 +70,9 @@ struct LogView: View {
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Glass.failStart)
+                                .foregroundStyle(Flat.red)
                                 .frame(width: 32, height: 32)
-                                .glassPill()
+                                .flatPill()
                         }
                         .buttonStyle(.plain)
                     }
