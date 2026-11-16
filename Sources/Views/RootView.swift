@@ -53,11 +53,23 @@ struct RootView: View {
                 get: { store.errorText != nil },
                 set: { if !$0 { store.clearError() } }
             )) {
+                if store.needsProfile {
+                    Button("打开 Portal 网页") { openPortal() }
+                }
                 Button("好", role: .cancel) { store.clearError() }
             } message: {
                 Text(store.errorText ?? "")
             }
         }
+    }
+
+    private func openPortal() {
+        let raw = store.settings.portalOverride.isEmpty
+            ? GiWifiProtocol.defaultPortal
+            : store.settings.portalOverride
+        guard let url = GiWifiClient.normalizedPortalURL(raw) else { return }
+        UIApplication.shared.open(url)
+        store.clearError()
     }
 
     // MARK: - 状态卡
@@ -227,6 +239,18 @@ struct RootView: View {
                 }
             }
             .font(.subheadline)
+
+            Button {
+                openPortal()
+            } label: {
+                Label("打开 Portal 网页（补全资料 / 网页登录）", systemImage: "safari")
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
     }
 
