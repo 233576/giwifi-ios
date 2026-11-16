@@ -16,6 +16,12 @@ enum GiWifiProtocol {
     static let fallbackHost = "as.gwifi.com.cn"
 
     /// 默认 Portal 站点：直接指定，跳过公网探测。
+    /// Portal 首页上那个 `<input name="nas_name">` 的默认值。
+    ///
+    /// 它不是真实网关名（真实名常带 HG / BRAS 后缀），但当页面抓不到时，
+    /// 用它做基底再拼后缀，能覆盖到真实值，比留空好得多。
+    static let fallbackNasName = "GiWiFi_lnsf"
+
     static let defaultPortal = "http://100.100.9.2/gportal/web/login"
 
     /// App Portal 接口统一 UA。
