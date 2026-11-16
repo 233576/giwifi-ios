@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfileEditorView: View {
     @EnvironmentObject private var store: AppStore
@@ -20,93 +21,192 @@ struct ProfileEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("档案名称（例如 我的 iPad）", text: $name)
-                    Picker("类型 btype", selection: $btype) {
-                        Text("1 · 手机").tag("1")
-                        Text("2 · 平板").tag("2")
+            ZStack {
+                AuroraBackground()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        identityCard
+                        modelCard
+                        macCard
+                        presetCard
                     }
-                    Picker("类别 staType", selection: $staType) {
-                        Text("phone").tag("phone")
-                        Text("pad").tag("pad")
-                    }
-                } header: {
-                    Text("身份")
-                } footer: {
-                    Text("btype 与 staType 必须匹配：手机 1/phone，平板 2/pad。")
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
                 }
-
-                Section {
-                    TextField("厂商，如 Xiaomi", text: $manufacturer)
-                        .autocorrectionDisabled()
-                    TextField("型号，如 M2011K2C", text: $model)
-                        .autocorrectionDisabled()
-                    TextField("SDK，如 30", text: $sdk)
-                        .keyboardType(.numberPad)
-                    TextField("Android 版本，如 11", text: $release)
-                        .keyboardType(.decimalPad)
-                } header: {
-                    Text("机型描述 staModel")
-                } footer: {
-                    Text(stripPreview)
-                }
-
-                Section {
-                    TextField("留空则用本机 / 服务端返回的 MAC", text: $macOverride)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.characters)
-                } header: {
-                    Text("伪装 MAC")
-                } footer: {
-                    Text("iOS 读不到真实 MAC，这里填的地址会直接写进认证报文；留空则按 IP 识别。")
-                }
-
-                Section {
-                    quickPresets
-                } header: {
-                    Text("快速填充")
-                }
+                .scrollIndicators(.hidden)
             }
             .navigationTitle(isNew ? "新建设备档案" : "编辑设备档案")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
+                        .foregroundStyle(.white.opacity(0.75))
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || staModelValue.count < 3)
+                    Button {
+                        save()
+                    } label: {
+                        Text("保存")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .glassPill(selected: canSave)
+                    }
+                    .disabled(!canSave)
+                    .opacity(canSave ? 1 : 0.45)
                 }
             }
             .onAppear(perform: fill)
         }
+        .preferredColorScheme(.dark)
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && staModelValue.count >= 3
+    }
+
+    // MARK: - 身份
+
+    private var identityCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GlassSectionHeader(title: "身份")
+
+            HStack(spacing: 10) {
+                Image(systemName: "tag.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(width: 18)
+                TextField("档案名称（例如 我的 iPad）", text: $name)
+                    .foregroundStyle(.white)
+            }
+            .glassField()
+
+            Picker("类型 btype", selection: $btype) {
+                Text("1 · 手机").tag("1")
+                Text("2 · 平板").tag("2")
+            }
+            .pickerStyle(.segmented)
+
+            Picker("类别 staType", selection: $staType) {
+                Text("phone").tag("phone")
+                Text("pad").tag("pad")
+            }
+            .pickerStyle(.segmented)
+
+            Text("btype 与 staType 必须匹配：手机 1/phone，平板 2/pad。")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .padding(16)
+        .glassCard()
+    }
+
+    // MARK: - 机型
+
+    private var modelCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GlassSectionHeader(title: "机型描述 staModel")
+
+            VStack(spacing: 10) {
+                labeledField("厂商", "如 Xiaomi", $manufacturer)
+                labeledField("型号", "如 M2011K2C", $model)
+                labeledField("SDK", "如 30", $sdk, keyboard: .numberPad)
+                labeledField("Android 版本", "如 11", $release, keyboard: .decimalPad)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.circle")
+                    .font(.caption2)
+                Text("上传值：\(staModelValue)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .lineLimit(2)
+            }
+            .foregroundStyle(.white.opacity(0.55))
+        }
+        .padding(16)
+        .glassCard()
+    }
+
+    private func labeledField(_ label: String, _ placeholder: String,
+                              _ text: Binding<String>,
+                              keyboard: UIKeyboardType = .default) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 66, alignment: .leading)
+            TextField(placeholder, text: text)
+                .keyboardType(keyboard)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .foregroundStyle(.white)
+        }
+        .glassField(radius: 12)
+    }
+
+    // MARK: - MAC
+
+    private var macCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GlassSectionHeader(title: "伪装 MAC")
+
+            HStack(spacing: 10) {
+                Image(systemName: "number")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(width: 18)
+                TextField("留空则用本机 / 服务端返回的 MAC", text: $macOverride)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .foregroundStyle(.white)
+            }
+            .glassField()
+
+            Text("iOS 读不到真实 MAC，这里填的地址会直接写进认证报文；留空则按 IP 识别。")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .padding(16)
+        .glassCard()
+    }
+
+    // MARK: - 快速填充
+
+    private var presetCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GlassSectionHeader(title: "快速填充")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(TerminalProfile.builtins) { preset in
+                        Button {
+                            apply(preset)
+                        } label: {
+                            Text(preset.name)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassPill()
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(16)
+        .glassCard(elevated: false)
     }
 
     private var staModelValue: String {
         [manufacturer, model, sdk, release]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .joined(separator: ",")
-    }
-
-    private var stripPreview: String {
-        "上传值：\(staModelValue)"
-    }
-
-    @ViewBuilder
-    private var quickPresets: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(TerminalProfile.builtins) { preset in
-                    Button(preset.name) {
-                        apply(preset)
-                    }
-                    .font(.caption)
-                    .buttonStyle(.bordered)
-                }
-            }
-            .padding(.vertical, 2)
-        }
     }
 
     private func apply(_ preset: TerminalProfile) {
