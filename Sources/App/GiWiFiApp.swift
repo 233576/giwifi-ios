@@ -9,6 +9,7 @@ struct GiWiFiApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .onAppear { store.restore() }
                 .onChange(of: scenePhase) { phase in
                     if phase == .background {
                         store.stopAuto()
