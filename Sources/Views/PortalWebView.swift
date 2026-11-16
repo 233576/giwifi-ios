@@ -26,27 +26,44 @@ struct PortalWebView: View {
             }
             .navigationTitle(model.title.isEmpty ? "Portal 网页" : model.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("关闭") {
+                    Button {
                         dismiss()
                         onClose()
+                    } label: {
+                        Text("关闭")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .glassPill()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 10) {
                         Button {
                             model.webView.goBack()
                         } label: {
                             Image(systemName: "chevron.backward")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(width: 32, height: 32)
+                                .glassPill()
                         }
+                        .buttonStyle(.plain)
                         .disabled(!model.canGoBack)
+                        .opacity(model.canGoBack ? 1 : 0.4)
 
                         Button {
                             model.webView.reload()
                         } label: {
                             Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                                .frame(width: 32, height: 32)
+                                .glassPill()
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -56,12 +73,18 @@ struct PortalWebView: View {
                     Text("UA 已固定为当前设备档案，与服务端绑定保持一致")
                 }
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.7))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(.bar)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(height: 1)
+                }
             }
         }
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear {
             model.load(url, userAgent: userAgent)
         }
