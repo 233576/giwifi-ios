@@ -6,6 +6,7 @@ struct RootView: View {
     @State private var showSettings = false
     @State private var showLogs = false
     @State private var showingProfileEditor = false
+    @State private var showingPortalWeb = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +50,14 @@ struct RootView: View {
             .sheet(isPresented: $showingProfileEditor) {
                 ProfileEditorView(profile: nil).environmentObject(store)
             }
+            .sheet(isPresented: $showingPortalWeb) {
+                if let url = portalURL {
+                    PortalWebView(url: url,
+                                  userAgent: GiWifiProtocol.browserUserAgent(for: store.currentProfile)) {
+                        Task { await store.refreshState() }
+                    }
+                }
+            }
             .alert("提示", isPresented: Binding(
                 get: { store.errorText != nil },
                 set: { if !$0 { store.clearError() } }
@@ -63,13 +72,18 @@ struct RootView: View {
         }
     }
 
-    private func openPortal() {
+    /// Portal 地址（手填优先，否则用默认站点）。
+    private var portalURL: URL? {
         let raw = store.settings.portalOverride.isEmpty
             ? GiWifiProtocol.defaultPortal
             : store.settings.portalOverride
-        guard let url = GiWifiClient.normalizedPortalURL(raw) else { return }
-        UIApplication.shared.open(url)
+        return GiWifiClient.normalizedPortalURL(raw)
+    }
+
+    /// 打开应用内 Portal 网页：UA 跟随设备档案，避免服务端把这次网页登录当成另一台设备。
+    private func openPortal() {
         store.clearError()
+        showingPortalWeb = true
     }
 
     // MARK: - 状态卡
