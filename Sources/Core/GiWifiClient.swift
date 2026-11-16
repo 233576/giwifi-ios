@@ -64,7 +64,7 @@ final class GiWifiClient {
             }
 
             // 状态查询
-            var state = await queryAuthState(context: context, username: username, appUuid: appUuid)
+            let state = await queryAuthState(context: context, username: username, appUuid: appUuid)
             if let state, state.isSuccess {
                 if let serverMac = state.string("userMac") ?? state.string("staMac"),
                    NetworkIdentity.isUsableMac(serverMac) {
@@ -84,19 +84,19 @@ final class GiWifiClient {
             }
 
             // 认证
-            var auth = await authLogin(context: context, username: username, password: password,
-                                       profile: profile, appUuid: appUuid)
-            log("认证：resultCode=\(auth?.resultCode.map(String.init) ?? "nil") \(auth?.message ?? "无响应")")
+            let firstAuth = await authLogin(context: context, username: username, password: password,
+                                            profile: profile, appUuid: appUuid)
+            log("认证：resultCode=\(firstAuth?.resultCode.map(String.init) ?? "nil") \(firstAuth?.message ?? "无响应")")
 
-            if let auth, auth.isSuccess {
-                return Result(online: true, message: auth.displayText,
+            if let firstAuth, firstAuth.isSuccess {
+                return Result(online: true, message: firstAuth.displayText,
                               portalOrigin: context.portal.absoluteString,
-                              serverMac: context.userMac, authState: auth.authState)
+                              serverMac: context.userMac, authState: firstAuth.authState)
             }
 
             // 设备冲突 → 换绑
-            if allowRebind, let auth, auth.requiresRebind {
-                log("检测到设备冲突：\(auth.message)，开始换绑")
+            if allowRebind, let firstAuth, firstAuth.requiresRebind {
+                log("检测到设备冲突：\(firstAuth.message)，开始换绑")
                 guard let rebind = await rebindMac(context: context, username: username,
                                                    password: password, profile: profile,
                                                    appUuid: appUuid) else {
@@ -120,28 +120,29 @@ final class GiWifiClient {
                     if !refreshed.userMac.isEmpty { context.userMac = refreshed.userMac }
                 }
 
-                state = await queryAuthState(context: context, username: username, appUuid: appUuid)
-                if let state, state.isSuccess, state.isOnline {
+                let reboundState = await queryAuthState(context: context, username: username,
+                                                        appUuid: appUuid)
+                if let reboundState, reboundState.isSuccess, reboundState.isOnline {
                     log("换绑后已在线")
-                    return Result(online: true, message: state.displayText,
+                    return Result(online: true, message: reboundState.displayText,
                                   portalOrigin: context.portal.absoluteString,
-                                  serverMac: context.userMac, authState: state.authState)
+                                  serverMac: context.userMac, authState: reboundState.authState)
                 }
 
-                auth = await authLogin(context: context, username: username, password: password,
-                                       profile: profile, appUuid: appUuid)
-                log("换绑后重试：resultCode=\(auth?.resultCode.map(String.init) ?? "nil") \(auth?.message ?? "无响应")")
-                if let auth, auth.isSuccess {
-                    return Result(online: true, message: auth.displayText,
+                let retryAuth = await authLogin(context: context, username: username, password: password,
+                                                profile: profile, appUuid: appUuid)
+                log("换绑后重试：resultCode=\(retryAuth?.resultCode.map(String.init) ?? "nil") \(retryAuth?.message ?? "无响应")")
+                if let retryAuth, retryAuth.isSuccess {
+                    return Result(online: true, message: retryAuth.displayText,
                                   portalOrigin: context.portal.absoluteString,
-                                  serverMac: context.userMac, authState: auth.authState)
+                                  serverMac: context.userMac, authState: retryAuth.authState)
                 }
-                return Result(online: false, message: auth?.displayText ?? "换绑后认证未成功",
+                return Result(online: false, message: retryAuth?.displayText ?? "换绑后认证未成功",
                               portalOrigin: context.portal.absoluteString,
                               serverMac: context.userMac, authState: nil)
             }
 
-            return Result(online: false, message: auth?.displayText ?? "认证未成功",
+            return Result(online: false, message: firstAuth?.displayText ?? "认证未成功",
                           portalOrigin: context.portal.absoluteString,
                           serverMac: context.userMac, authState: nil)
         } catch {
