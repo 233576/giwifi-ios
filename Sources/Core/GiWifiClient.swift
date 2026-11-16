@@ -199,12 +199,56 @@ final class GiWifiClient {
            let value = components.queryItems?.first(where: { $0.name.lowercased() == "wlanacname" })?.value {
             nasName = value
         }
+        // 手填的 Portal 通常不带 wlanacname，抓一次首页把它补上（authLogin 要这个字段）。
+        if nasName.isEmpty {
+            nasName = await harvestNasName(portal: portal)
+        }
 
         return Context(portal: portal,
                        userIp: identity.ipv4,
                        userMac: identity.mac,
                        nasName: nasName,
                        gatewayIp: "")
+    }
+
+    /// 取 Portal 首页，从最终 URL 或 HTML 里找 `wlanacname` / `nasName`。
+    private func harvestNasName(portal: URL) async -> String {
+        var request = URLRequest(url: portal)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 6
+        request.setValue(GiWifiProtocol.discoveryUserAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse,
+               let finalURL = http.url,
+               let components = URLComponents(url: finalURL, resolvingAgainstBaseURL: false),
+               let value = components.queryItems?.first(where: {
+                   let name = $0.name.lowercased()
+                   return name == "wlanacname" || name == "nasname" || name == "nas_name"
+               })?.value, !value.isEmpty {
+                log("从 Portal 跳转拿到 nasName：\(value)")
+                return value
+            }
+            let html = String(data: data, encoding: .utf8) ?? ""
+            for pattern in [#"wlanacname=([A-Za-z0-9\-_]+)"#,
+                            #""nasName"\s*:\s*"([^"]+)""#,
+                            #"name=["']nasName["'][^>]*value=["']([^"']+)["']"#] {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                   let match = regex.firstMatch(in: html, options: [],
+                                                range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1,
+                   let range = Range(match.range(at: 1), in: html) {
+                    let value = String(html[range])
+                    if !value.isEmpty {
+                        log("从 Portal 页面拿到 nasName：\(value)")
+                        return value
+                    }
+                }
+            }
+        } catch {
+            log("获取 Portal 首页失败：\(error.localizedDescription)")
+        }
+        return ""
     }
 
     /// 规范化手填的 Portal：补 `http://`、校验 host、保留 query（`wlanacname` 等参数有用）。
@@ -413,27 +457,46 @@ final class GiWifiClient {
             log("\(name)：载荷加密失败")
             return nil
         }
+        // APK 用 form map 提交，`data` 的值会被再编码一次；少这层编码服务端解不出密文，
+        // 会直接回 `resultCode=99 error: data is error`。
+        let bodyValue = Crypto.javaFormURLEncode(data)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("Keep-Alive", forHTTPHeaderField: "Connection")
         request.setValue(GiWifiProtocol.apiUserAgent, forHTTPHeaderField: "User-Agent")
-        request.httpBody = Data("data=\(data)".utf8)
+        request.httpBody = Data("data=\(bodyValue)".utf8)
+
+        if name != "状态查询" {
+            log("\(name)：POST \(url.path)｜\(redactedFields(fields, encodedField: encodedField))")
+        }
 
         do {
             let (responseData, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { return nil }
             let body = String(data: responseData, encoding: .utf8) ?? ""
             if !(200...299).contains(http.statusCode) {
-                log("\(name)：HTTP \(http.statusCode)")
+                log("\(name)：HTTP \(http.statusCode) \(body.prefix(200))")
                 return nil
             }
-            return PortalResponse.parse(body)
+            let parsed = PortalResponse.parse(body)
+            if let parsed, !parsed.isSuccess {
+                log("\(name)：原文 \(body.prefix(300))")
+            }
+            return parsed
         } catch {
             log("\(name)请求异常：\(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// 打印请求字段（密码打码），排错用。
+    private func redactedFields(_ fields: [String: String], encodedField: String?) -> String {
+        fields.keys.sorted().map { key in
+            let value = key == encodedField ? "****" : (fields[key] ?? "")
+            return "\(key)=\(value)"
+        }.joined(separator: "&")
     }
 
     // MARK: - 字段辅助
