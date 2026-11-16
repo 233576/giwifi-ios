@@ -8,7 +8,7 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 - 最低系统：iOS 16.0
 - 设备：iPhone / iPad（arm64）
 - Bundle ID：`com.giwifi.ios`
-- 版本：1.0.0 (1)
+- 版本：1.1.0 (2)
 
 ---
 
@@ -33,6 +33,14 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 3. 兜底 `http://as.gwifi.com.cn/gportal/web/login`。
 
 把设置里那栏清空即回到原版探测行为；站点换了只改这一栏，不用重装。
+
+### 界面
+
+v1.1.0 起整体换成**液态玻璃（Liquid Glass）风格**：深色极光渐变底 + 三团彩色光晕 + 半透明毛玻璃卡片，
+卡片带左上高光描边、右下暗边与投影，状态环是玻璃圆盘内嵌渐变进度弧，按钮按下有回弹缩放。
+
+iOS 26 有系统级 `.glassEffect()`，但本工程最低支持 iOS 16，所以用 `Material` + 多层描边高光手搓了等效质感
+（`Sources/Views/GlassTheme.swift`），在 iOS 16–26 上观感一致，不依赖新系统 API。
 
 ---
 
