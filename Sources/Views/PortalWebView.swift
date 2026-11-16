@@ -26,7 +26,8 @@ struct PortalWebView: View {
             }
             .navigationTitle(model.title.isEmpty ? "Portal 网页" : model.title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Flat.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -38,7 +39,7 @@ struct PortalWebView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .glassPill()
+                            .flatPill()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -49,7 +50,7 @@ struct PortalWebView: View {
                             Image(systemName: "chevron.backward")
                                 .font(.system(size: 14, weight: .semibold))
                                 .frame(width: 32, height: 32)
-                                .glassPill()
+                                .flatPill()
                         }
                         .buttonStyle(.plain)
                         .disabled(!model.canGoBack)
@@ -61,7 +62,7 @@ struct PortalWebView: View {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 14, weight: .semibold))
                                 .frame(width: 32, height: 32)
-                                .glassPill()
+                                .flatPill()
                         }
                         .buttonStyle(.plain)
                     }
@@ -73,13 +74,13 @@ struct PortalWebView: View {
                     Text("UA 已固定为当前设备档案，与服务端绑定保持一致")
                 }
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(Flat.textSecondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
+                .background(Flat.surface)
                 .overlay(alignment: .top) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.12))
+                        .fill(Flat.strokeStrong)
                         .frame(height: 1)
                 }
             }
