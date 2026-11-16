@@ -58,7 +58,7 @@ final class GiWifiClient {
                appUuid: String, serviceType: Int,
                allowRebind: Bool = true) async -> Result? {
         do {
-            var context = try await resolveContext()
+            var context = try await resolveContext(profile: profile)
             log("Portal：\(context.portal.absoluteString)")
 
             // 账号层
@@ -116,7 +116,9 @@ final class GiWifiClient {
             // 常见是漏掉 / 多出一个后缀（如 GiWiFi_lnsf vs 真实的 GiWiFi_lnsfHG）。
             if let firstAuth, !firstAuth.isSuccess,
                firstAuth.resultCode == 99 || firstAuth.message.contains("CHALLENGE") {
-                for candidate in Self.nasNameVariants(context.nasName).prefix(3) {
+                let candidates = Array(Self.nasNameVariants(context.nasName).prefix(3))
+                log("nasName 候选：\(candidates.isEmpty ? "无" : candidates.joined(separator: ", "))")
+                for candidate in candidates {
                     log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试（等 5 秒避开频率限制）")
                     try? await Task.sleep(nanoseconds: 5_200_000_000)
                     var retryContext = context
@@ -163,7 +165,7 @@ final class GiWifiClient {
                 log("换绑成功，等待网关同步 4 秒")
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
 
-                if let refreshed = try? await resolveContext() {
+                if let refreshed = try? await resolveContext(profile: profile) {
                     context.portal = refreshed.portal
                     context.userIp = refreshed.userIp
                     if !refreshed.userMac.isEmpty { context.userMac = refreshed.userMac }
@@ -210,8 +212,8 @@ final class GiWifiClient {
     }
 
     /// 仅查询在线状态，用于自动重连轮询。
-    func checkState(username: String, appUuid: String) async -> Result? {
-        guard let context = try? await resolveContext() else { return nil }
+    func checkState(username: String, appUuid: String, profile: TerminalProfile) async -> Result? {
+        guard let context = try? await resolveContext(profile: profile) else { return nil }
         guard let state = await queryAuthState(context: context, username: username, appUuid: appUuid),
               state.isSuccess else { return nil }
         var mac = context.userMac
@@ -233,7 +235,7 @@ final class GiWifiClient {
         var gatewayIp: String
     }
 
-    private func resolveContext() async throws -> Context {
+    private func resolveContext(profile: TerminalProfile) async throws -> Context {
         let identity = NetworkIdentity.current()
         guard let identity, NetworkIdentity.isUsableIPv4(identity.ipv4) else {
             throw Failure.message("未获取到 Wi-Fi 的 IPv4 地址，请先连接校园网 Wi-Fi")
@@ -258,10 +260,16 @@ final class GiWifiClient {
         // （authLogin 要这两个字段，缺 MAC 时服务端会回 CHALLENGE_ERR_DENY）。
         var userMac = identity.mac
         if nasName.isEmpty || !NetworkIdentity.isUsableMac(userMac) {
-            let meta = await harvestPortalMeta(portal: portal)
+            let meta = await harvestPortalMeta(portal: portal, profile: profile)
             if nasName.isEmpty { nasName = meta.nasName }
             if !NetworkIdentity.isUsableMac(userMac) { userMac = meta.mac }
         }
+
+        // 抓不到 nasName（页面 403 / 结构变了）时不能留空：空值一定被网关拒成
+        // CHALLENGE_ERR_DENY，而且变体链为空等于不重试。用入口默认网关名做基底，
+        // 后面的 nasNameVariants 会补出 HG / BRAS 等真实后缀。
+        if nasName.isEmpty { nasName = GiWifiProtocol.fallbackNasName }
+        log("nasName：\(nasName)")
 
         return Context(portal: portal,
                        userIp: identity.ipv4,
@@ -271,11 +279,16 @@ final class GiWifiClient {
     }
 
     /// 取 Portal 首页，从最终 URL 或 HTML 里找 `wlanacname` / `nasName` 与终端 MAC。
-    private func harvestPortalMeta(portal: URL) async -> (nasName: String, mac: String) {
+    private func harvestPortalMeta(portal: URL, profile: TerminalProfile)
+        async -> (nasName: String, mac: String) {
         var request = URLRequest(url: portal)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
-        request.setValue(GiWifiProtocol.discoveryUserAgent, forHTTPHeaderField: "User-Agent")
+        // 关键：Portal 首页对 okhttp / curl 一类 UA 直接返 403 Forbidden（实测），
+        // 必须用浏览器 UA 才能拿到 <input name="nas_name"> 和 user_mac。
+        request.setValue(GiWifiProtocol.browserUserAgent(for: profile),
+                         forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         var nasName = ""
         var mac = ""
         do {
@@ -341,8 +354,8 @@ final class GiWifiClient {
     static func guidance(for response: PortalResponse) -> String {
         let original = response.message
         if needsProfileCompletion(response) {
-            return "服务端要求先完善个人信息（resultCode 40）。请点下面「打开 Portal 网页」，"
-                + "用同一账号登录一次，按提示补全手机号 / 院系资料，再回来重新认证。"
+            return "服务端要求先完成实名 / 个人信息（resultCode 40）。点下方「内置网页」，"
+                + "用同一手机号和密码登录一次，按页面提示补全资料，回来再点重新认证。"
         }
         switch response.resultCode {
         case 108:
