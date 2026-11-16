@@ -14,7 +14,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AuroraBackground()
+                FlatBackground()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -35,11 +35,12 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Flat.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(Flat.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -56,7 +57,7 @@ struct SettingsView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 6)
-                            .glassPill(selected: true)
+                            .flatPill(selected: true)
                     }
                 }
             }
@@ -83,13 +84,13 @@ struct SettingsView: View {
 
     private var accountCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "账号")
+            FlatSectionHeader(title: "账号")
 
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: "person.fill")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Flat.textTertiary)
                         .frame(width: 18)
                     TextField("校园网账号（手机号）", text: $username)
                         .textContentType(.username)
@@ -98,43 +99,43 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .foregroundStyle(.white)
                 }
-                .glassField()
+                .flatField()
 
                 HStack(spacing: 10) {
                     Image(systemName: "lock.fill")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Flat.textTertiary)
                         .frame(width: 18)
                     SecureField("密码", text: $password)
                         .textContentType(.password)
                         .foregroundStyle(.white)
                 }
-                .glassField()
+                .flatField()
             }
 
             Text("密码只保存在本机钥匙串。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
                 .padding(.leading, 4)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 设备
 
     private var deviceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "设备")
+            FlatSectionHeader(title: "设备")
 
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("设备标识 appUuid")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(Flat.textPrimary)
                     Text("…\(store.settings.appUuid.suffix(9))")
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(Flat.textTertiary)
                 }
                 Spacer()
                 Button {
@@ -145,29 +146,29 @@ struct SettingsView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
-                        .glassPill()
+                        .flatPill()
                 }
                 .buttonStyle(.plain)
             }
 
             Text("appUuid 是 GiWiFi 识别终端的凭据，重新生成后需要重新认证一次。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - Portal
 
     private var portalCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "Portal 站点")
+            FlatSectionHeader(title: "Portal 站点")
 
             HStack(spacing: 10) {
                 Image(systemName: "globe")
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Flat.textTertiary)
                     .frame(width: 18)
                 TextField("http://100.100.9.2/gportal/web/login", text: $portal)
                     .textContentType(.URL)
@@ -176,7 +177,7 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .foregroundStyle(.white)
             }
-            .glassField()
+            .flatField()
 
             HStack(spacing: 10) {
                 Button {
@@ -184,10 +185,10 @@ struct SettingsView: View {
                 } label: {
                     Text("恢复默认站点")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Flat.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
-                        .glassPill()
+                        .flatPill()
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -195,43 +196,43 @@ struct SettingsView: View {
 
             Text("留空则走 APK 原始探测（115.159.209.137 → 302 跳转）。填了就直连该站点，认证接口按同一主机拼接。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 网关名
 
     private var nasCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "网关名 nasName")
+            FlatSectionHeader(title: "网关名 nasName")
 
             HStack(spacing: 10) {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Flat.textTertiary)
                     .frame(width: 18)
                 TextField("留空自动获取（如 GiWiFi_lnsfHG）", text: $nasName)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .foregroundStyle(.white)
             }
-            .glassField()
+            .flatField()
 
             Text("认证被拒 CHALLENGE_ERR_DENY 基本都是这里对不上。留空时先用 queryAuthState 返回的真实网关名，取不到再抓 Portal 页面；填了就只认这个值。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 协议参数
 
     private var protocolCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "协议参数")
+            FlatSectionHeader(title: "协议参数")
 
             Stepper(value: Binding(
                 get: { store.settings.serviceType },
@@ -240,27 +241,27 @@ struct SettingsView: View {
                 HStack {
                     Text("service_type")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(Flat.textPrimary)
                     Spacer()
                     Text("\(store.settings.serviceType)")
                         .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Glass.accentStart)
+                        .foregroundStyle(Flat.accent)
                 }
             }
 
             Text("默认 1，个别学校要求 2 或 3；认证失败可以先按学校要求调整。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     // MARK: - 保持在线
 
     private var keepOnlineCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GlassSectionHeader(title: "保持在线")
+            FlatSectionHeader(title: "保持在线")
 
             toggleRow("掉线自动重连",
                       isOn: Binding(
@@ -269,7 +270,7 @@ struct SettingsView: View {
                       ))
 
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Flat.stroke)
                 .frame(height: 1)
 
             toggleRow("设备冲突时自动换绑",
@@ -279,7 +280,7 @@ struct SettingsView: View {
                       ))
 
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Flat.stroke)
                 .frame(height: 1)
 
             Stepper(value: Binding(
@@ -289,27 +290,27 @@ struct SettingsView: View {
                 HStack {
                     Text("检查间隔")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(Flat.textPrimary)
                     Spacer()
                     Text("\(Int(store.settings.reconnectInterval)) 秒")
                         .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Glass.accentStart)
+                        .foregroundStyle(Flat.accent)
                 }
             }
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     private func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack {
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(Flat.textPrimary)
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Glass.onlineStart)
+                .tint(Flat.green)
         }
     }
 
@@ -318,7 +319,7 @@ struct SettingsView: View {
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                GlassSectionHeader(title: "设备档案")
+                FlatSectionHeader(title: "设备档案")
                 Button {
                     editing = TerminalProfile(name: "", btype: "1", staType: "phone",
                                               staModel: "", macOverride: "")
@@ -328,7 +329,7 @@ struct SettingsView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .glassPill()
+                        .flatPill()
                 }
                 .buttonStyle(.plain)
             }
@@ -341,10 +342,10 @@ struct SettingsView: View {
 
             Text("内置档案不可删除；点内置档案会复制一份再编辑。")
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
-        .glassCard()
+        .flatCard()
     }
 
     private func profileRow(_ profile: TerminalProfile) -> some View {
@@ -365,10 +366,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.name)
                         .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(Flat.textPrimary)
                     Text(profile.subtitle)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Flat.textTertiary)
                         .lineLimit(1)
                 }
 
@@ -376,7 +377,7 @@ struct SettingsView: View {
 
                 if selected {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Glass.onlineStart)
+                        .foregroundStyle(Flat.green)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.caption2)
@@ -385,7 +386,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .glassField(radius: 12)
+            .flatField(radius: 12)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -408,32 +409,32 @@ struct SettingsView: View {
 
     private var aboutCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GlassSectionHeader(title: "关于")
+            FlatSectionHeader(title: "关于")
 
             HStack {
                 Text("版本")
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(Flat.textPrimary)
                 Spacer()
                 Text(Self.appVersion)
                     .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Flat.textSecondary)
             }
 
             Link(destination: URL(string: "https://github.com/Mhenwa/xGiWifi")!) {
                 HStack {
                     Text("参考实现 xGiWifi（Dart/Flutter）")
                         .font(.footnote)
-                        .foregroundStyle(Glass.accentStart)
+                        .foregroundStyle(Flat.accent)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption2)
-                        .foregroundStyle(Glass.accentStart.opacity(0.7))
+                        .foregroundStyle(Flat.accent.opacity(0.7))
                 }
             }
         }
         .padding(16)
-        .glassCard(elevated: false)
+        .flatCard(fill: Flat.surfaceLow)
     }
 
     private func editingProfileCopy(_ profile: TerminalProfile) {
