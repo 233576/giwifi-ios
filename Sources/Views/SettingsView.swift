@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var portal: String = GiWifiProtocol.defaultPortal
+    @State private var nasName: String = ""
     @State private var editing: TerminalProfile?
     @State private var confirmingReset = false
 
@@ -55,6 +56,16 @@ struct SettingsView: View {
                     Text("Portal 站点")
                 } footer: {
                     Text("留空则走 APK 原始探测（115.159.209.137 → 302 跳转）。填了就直连该站点，认证接口按同一主机拼接。")
+                }
+
+                Section {
+                    TextField("留空自动获取（如 GiWiFi_lnsfHG）", text: $nasName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("网关名 nasName")
+                } footer: {
+                    Text("认证被拒 CHALLENGE_ERR_DENY 基本都是这里对不上。留空时先用 queryAuthState 返回的真实网关名，取不到再抓 Portal 页面；填了就只认这个值。")
                 }
 
                 Section {
@@ -170,6 +181,7 @@ struct SettingsView: View {
                             settings.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
                             settings.password = password
                             settings.portalOverride = portal.trimmingCharacters(in: .whitespacesAndNewlines)
+                            settings.nasName = nasName.trimmingCharacters(in: .whitespacesAndNewlines)
                         }
                         dismiss()
                     }
@@ -179,6 +191,7 @@ struct SettingsView: View {
                 username = store.settings.username
                 password = store.settings.password
                 portal = store.settings.portalOverride
+                nasName = store.settings.nasName
             }
             .sheet(item: $editing) { profile in
                 ProfileEditorView(profile: profile).environmentObject(store)
