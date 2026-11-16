@@ -265,15 +265,18 @@ final class GiWifiClient {
             if let http = response as? HTTPURLResponse, let finalURL = http.url {
                 haystack += " " + finalURL.absoluteString
             }
-            for pattern in [#"wlanacname=([A-Za-z0-9\-_]+)"#,
-                            #""nasName"\s*:\s*"([^"]+)""#,
-                            #"name=["']nasName["'][^>]*value=["']([^"']+)["']"#] {
+            for pattern in [#"name=["']nas_name["'][^>]*value=["']([^"']+)["']"#,
+                            #"name=["']nasName["'][^>]*value=["']([^"']+)["']"#,
+                            #"wlanacname=([A-Za-z0-9\-_]+)"#,
+                            #"nas_name=([A-Za-z0-9\-_]+)"#,
+                            #""nasName"\s*:\s*"([^"]+)""#] {
                 if let value = Self.firstGroup(pattern, in: haystack), !value.isEmpty {
                     nasName = value
                     break
                 }
             }
             for pattern in [#"name=["']userMac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
+                            #"name=["']user_mac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
                             #""userMac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
                             #"name=["']staMac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
                             #""wlanusermac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
