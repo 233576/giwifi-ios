@@ -134,7 +134,7 @@ final class AppStore: ObservableObject {
         append("设备档案：\(currentProfile.name)｜\(currentProfile.subtitle)")
 
         let profile = currentProfile
-        let client = GiWifiClient(portalOverride: settings.portalOverride) { [weak self] line in
+        let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
             Task { @MainActor in self?.append(line) }
         }
 
@@ -170,7 +170,7 @@ final class AppStore: ObservableObject {
     /// 只查在线状态，不触发认证。
     func refreshState() async {
         guard !settings.username.isEmpty else { return }
-        let client = GiWifiClient(portalOverride: settings.portalOverride) { [weak self] line in
+        let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
             Task { @MainActor in self?.append(line) }
         }
         guard let result = await client.checkState(username: settings.username,
@@ -228,7 +228,7 @@ final class AppStore: ObservableObject {
             stopAuto()
             return
         }
-        let client = GiWifiClient(portalOverride: settings.portalOverride) { [weak self] line in
+        let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
             Task { @MainActor in self?.append(line) }
         }
         if let result = await client.checkState(username: settings.username,
