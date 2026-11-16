@@ -95,16 +95,19 @@ struct AccountSettings: Codable {
     var serviceType: Int
     /// 指定 Portal 站点；留空表示走 APK 原始的 115.159.209.137 探测。
     var portalOverride: String
+    /// 手填网关名（nasName）。留空表示先用 queryAuthState 返回的真实值，再退回 Portal 页面抓取。
+    var nasName: String
 
     enum CodingKeys: String, CodingKey {
         case username, password, appUuid, selectedProfileID, customProfiles
-        case autoReconnect, reconnectInterval, autoRebind, serviceType, portalOverride
+        case autoReconnect, reconnectInterval, autoRebind, serviceType, portalOverride, nasName
     }
 
     init(username: String, password: String, appUuid: String, selectedProfileID: UUID,
          customProfiles: [TerminalProfile], autoReconnect: Bool, reconnectInterval: Double,
          autoRebind: Bool, serviceType: Int,
-         portalOverride: String = GiWifiProtocol.defaultPortal) {
+         portalOverride: String = GiWifiProtocol.defaultPortal,
+         nasName: String = "") {
         self.username = username
         self.password = password
         self.appUuid = appUuid
@@ -115,6 +118,7 @@ struct AccountSettings: Codable {
         self.autoRebind = autoRebind
         self.serviceType = serviceType
         self.portalOverride = portalOverride
+        self.nasName = nasName
     }
 
     /// 旧版本缓存里没有 `portalOverride`，缺字段时补默认值，避免整份设置被丢弃。
@@ -136,6 +140,7 @@ struct AccountSettings: Codable {
             ?? GiWifiProtocol.defaultServiceType
         portalOverride = try container.decodeIfPresent(String.self, forKey: .portalOverride)
             ?? GiWifiProtocol.defaultPortal
+        nasName = try container.decodeIfPresent(String.self, forKey: .nasName) ?? ""
     }
 
     static func `default`() -> AccountSettings {
@@ -149,7 +154,8 @@ struct AccountSettings: Codable {
             reconnectInterval: 30,
             autoRebind: true,
             serviceType: GiWifiProtocol.defaultServiceType,
-            portalOverride: GiWifiProtocol.defaultPortal
+            portalOverride: GiWifiProtocol.defaultPortal,
+            nasName: ""
         )
     }
 
