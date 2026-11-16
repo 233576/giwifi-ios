@@ -21,6 +21,22 @@ enum GiWifiProtocol {
     /// App Portal 接口统一 UA。
     static let apiUserAgent = "okhttp/3.8.0"
 
+    /// 按终端档案拼一个 Android 浏览器 UA。
+    ///
+    /// 应用内 Portal 网页必须用这个 UA 出网：Safari 会带自己的 UA，
+    /// 服务端按 UA 判设备型号，设备绑定额度有限，UA 一变就可能被当成新设备。
+    /// `staModel` 的格式是 `品牌,型号,SDK,Android版本`。
+    static func browserUserAgent(for profile: TerminalProfile) -> String {
+        let parts = profile.staModel
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let brand = parts.count > 0 && !parts[0].isEmpty ? parts[0] : "samsung"
+        let model = parts.count > 1 && !parts[1].isEmpty ? parts[1] : "SM-T870"
+        let android = parts.count > 3 && !parts[3].isEmpty ? parts[3] : "14"
+        return "Mozilla/5.0 (Linux; Android \(android); \(model) Build/\(brand)_\(model)) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    }
+
     /// 探测请求 UA（APK 内置的小米浏览器标识）。
     static let discoveryUserAgent = "Mozilla/5.0 (Linux; U; Android 11; zh-cn; "
         + "M2011K2C Build/RKQ1.200928.002) AppleWebKit/537.36 "
