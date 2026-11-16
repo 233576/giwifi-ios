@@ -45,6 +45,8 @@ final class AppStore: ObservableObject {
     @Published var errorText: String?
     /// 服务端要求先完善个人信息（resultCode=40），首页会多出一个「打开 Portal 网页」按钮。
     @Published private(set) var needsProfile = false
+    /// 网关拒绝了 API 认证（CHALLENGE_ERR_DENY），此时只能走内置网页登录。
+    @Published private(set) var needsWebAuth = false
 
     private var autoTask: Task<Void, Never>?
     private static let settingsKey = "giwifi.settings.v1"
@@ -160,6 +162,7 @@ final class AppStore: ObservableObject {
         if !result.serverMac.isEmpty { serverMac = result.serverMac }
         if result.online {
             needsProfile = false
+            needsWebAuth = false
             state = .online
             detail = result.message.isEmpty ? "已认证，可以上网了" : result.message
             append("认证成功：\(detail)")
@@ -167,6 +170,7 @@ final class AppStore: ObservableObject {
             state = .failed
             detail = result.message.isEmpty ? "认证未通过" : result.message
             needsProfile = result.needsProfile
+            needsWebAuth = result.needsWebAuth
             append("认证失败：\(detail)")
         }
     }
