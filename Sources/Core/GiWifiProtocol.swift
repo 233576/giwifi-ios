@@ -15,6 +15,9 @@ enum GiWifiProtocol {
     /// 探测返回空成功标记时使用的主机。
     static let fallbackHost = "as.gwifi.com.cn"
 
+    /// 默认 Portal 站点：直接指定，跳过公网探测。
+    static let defaultPortal = "http://100.100.9.2/gportal/web/login"
+
     /// App Portal 接口统一 UA。
     static let apiUserAgent = "okhttp/3.8.0"
 
