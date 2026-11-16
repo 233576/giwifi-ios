@@ -178,7 +178,8 @@ final class AppStore: ObservableObject {
             Task { @MainActor in self?.append(line) }
         }
         guard let result = await client.checkState(username: settings.username,
-                                                   appUuid: settings.appUuid) else {
+                                                   appUuid: settings.appUuid,
+                                                   profile: currentProfile) else {
             if state != .connecting { state = .offline }
             return
         }
@@ -236,7 +237,8 @@ final class AppStore: ObservableObject {
             Task { @MainActor in self?.append(line) }
         }
         if let result = await client.checkState(username: settings.username,
-                                                appUuid: settings.appUuid) {
+                                                   appUuid: settings.appUuid,
+                                                   profile: currentProfile) {
             if !result.serverMac.isEmpty { serverMac = result.serverMac }
             if result.online {
                 if state != .online {
