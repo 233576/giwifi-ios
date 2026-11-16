@@ -91,6 +91,8 @@ struct PortalResponse {
     let resultCode: Int?
     let message: String
     let data: [String: Any]?
+    /// 解密后的 data 原文，仅用于日志诊断。
+    var rawPayload: String = ""
 
     var isSuccess: Bool { resultCode == 0 || resultCode == 200 }
 
@@ -168,7 +170,13 @@ struct PortalResponse {
         if code == nil, business == nil {
             return nil
         }
-        return PortalResponse(resultCode: code, message: message, data: business)
+        var raw = ""
+        if !payload.isEmpty,
+           let json = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+           let text = String(data: json, encoding: .utf8) {
+            raw = text
+        }
+        return PortalResponse(resultCode: code, message: message, data: business, rawPayload: raw)
     }
 
     /// 账号层响应：顶层 `data` 通常是 JSON 字符串。
