@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var portal: String = GiWifiProtocol.defaultPortal
     @State private var editing: TerminalProfile?
     @State private var confirmingReset = false
 
@@ -38,6 +39,22 @@ struct SettingsView: View {
                     Text("设备")
                 } footer: {
                     Text("appUuid 是 GiWiFi 识别终端的凭据，重新生成后需要重新认证一次。")
+                }
+
+                Section {
+                    TextField("http://100.100.9.2/gportal/web/login", text: $portal)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    Button("恢复默认站点") {
+                        portal = GiWifiProtocol.defaultPortal
+                    }
+                    .font(.footnote)
+                } header: {
+                    Text("Portal 站点")
+                } footer: {
+                    Text("留空则走 APK 原始探测（115.159.209.137 → 302 跳转）。填了就直连该站点，认证接口按同一主机拼接。")
                 }
 
                 Section {
@@ -152,6 +169,7 @@ struct SettingsView: View {
                         store.updateSettings { settings in
                             settings.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
                             settings.password = password
+                            settings.portalOverride = portal.trimmingCharacters(in: .whitespacesAndNewlines)
                         }
                         dismiss()
                     }
@@ -160,6 +178,7 @@ struct SettingsView: View {
             .onAppear {
                 username = store.settings.username
                 password = store.settings.password
+                portal = store.settings.portalOverride
             }
             .sheet(item: $editing) { profile in
                 ProfileEditorView(profile: profile).environmentObject(store)
