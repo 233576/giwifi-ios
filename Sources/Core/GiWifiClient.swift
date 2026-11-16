@@ -52,6 +52,8 @@ final class GiWifiClient {
         var authState: Int?
         /// 服务端要求先完善个人信息（resultCode=40），UI 据此给出「打开 Portal 网页」入口。
         var needsProfile: Bool = false
+        /// 网关拒绝 API 认证（CHALLENGE_ERR_DENY），只能改走内置网页登录。
+        var needsWebAuth: Bool = false
     }
 
     func login(username: String, password: String, profile: TerminalProfile,
@@ -202,9 +204,17 @@ final class GiWifiClient {
                               needsProfile: Self.needsProfileCompletion(firstAuth))
             }
 
-            return Result(online: false, message: firstAuth?.displayText ?? "认证未成功",
+            // 走到这里说明所有 nasName 候选都被 CHALLENGE_ERR_DENY 拒了。
+            // 实测：该错误来自「加密正文里的网络身份与服务端看到的入口不一致」，
+            // 也就是 userIp / 源 IP / 网关名 三者没对上，纯 API 侧无法再猜，
+            // 只能让用户在应用内网页里完成一次登录（网页表单自带 sign、iv、
+            // sta_ip 等字段，由页面 JS 生成，绕不过去）。
+            return Result(online: false,
+                          message: "网关拒绝了 API 认证（CHALLENGE_ERR_DENY）。"
+                              + "点下方「内置网页」，在同一页面登录一次即可完成认证。",
                           portalOrigin: context.portal.absoluteString,
-                          serverMac: context.userMac, authState: nil)
+                          serverMac: context.userMac, authState: nil,
+                          needsWebAuth: true)
         } catch {
             log("失败：\(error.localizedDescription)")
             return nil
@@ -259,20 +269,28 @@ final class GiWifiClient {
         // 手填的 Portal 通常不带 wlanacname，抓一次首页把 nasName 与网关看到的 MAC 补上
         // （authLogin 要这两个字段，缺 MAC 时服务端会回 CHALLENGE_ERR_DENY）。
         var userMac = identity.mac
-        if nasName.isEmpty || !NetworkIdentity.isUsableMac(userMac) {
-            let meta = await harvestPortalMeta(portal: portal, profile: profile)
-            if nasName.isEmpty { nasName = meta.nasName }
-            if !NetworkIdentity.isUsableMac(userMac) { userMac = meta.mac }
+        // userIp 必须等于网关自己看到的源 IP，否则 authLogin 一律 CHALLENGE_ERR_DENY
+        // （实测：同一台机器、同一个 nasName，只有源 IP 不同，结果就从 108 变成 99）。
+        // 页面会把服务端看到的源 IP 回显到 request_ip / sta_ip，优先用它。
+        var userIp = identity.ipv4
+        let meta = await harvestPortalMeta(portal: portal, profile: profile)
+        if nasName.isEmpty { nasName = meta.nasName }
+        if !NetworkIdentity.isUsableMac(userMac) { userMac = meta.mac }
+        if NetworkIdentity.isUsableIPv4(meta.requestIp) {
+            if meta.requestIp != userIp {
+                log("注意：本机读到 \(userIp)，网关看到 \(meta.requestIp)，按网关的来")
+            }
+            userIp = meta.requestIp
         }
 
         // 抓不到 nasName（页面 403 / 结构变了）时不能留空：空值一定被网关拒成
         // CHALLENGE_ERR_DENY，而且变体链为空等于不重试。用入口默认网关名做基底，
         // 后面的 nasNameVariants 会补出 HG / BRAS 等真实后缀。
         if nasName.isEmpty { nasName = GiWifiProtocol.fallbackNasName }
-        log("nasName：\(nasName)")
+        log("nasName：\(nasName)，userIp：\(userIp)")
 
         return Context(portal: portal,
-                       userIp: identity.ipv4,
+                       userIp: userIp,
                        userMac: userMac,
                        nasName: nasName,
                        gatewayIp: "")
@@ -280,7 +298,7 @@ final class GiWifiClient {
 
     /// 取 Portal 首页，从最终 URL 或 HTML 里找 `wlanacname` / `nasName` 与终端 MAC。
     private func harvestPortalMeta(portal: URL, profile: TerminalProfile)
-        async -> (nasName: String, mac: String) {
+        async -> (nasName: String, mac: String, requestIp: String) {
         var request = URLRequest(url: portal)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
@@ -307,6 +325,18 @@ final class GiWifiClient {
                     break
                 }
             }
+            // 页面会把「服务端看到的源 IP」回显在 request_ip / sta_ip 里。
+            // 认证时 userIp 必须等于这个地址，否则网关回 CHALLENGE_ERR_DENY。
+            var requestIp = ""
+            for pattern in [#"name=["']request_ip["'][^>]*value=["']([0-9\.]+)["']"#,
+                            #"name=["']sta_ip["'][^>]*value=["']([0-9\.]+)["']"#] {
+                if let value = Self.firstGroup(pattern, in: haystack), !value.isEmpty,
+                   value != "0.0.0.0" {
+                    requestIp = value
+                    break
+                }
+            }
+
             for pattern in [#"name=["']userMac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
                             #"name=["']user_mac["'][^>]*value=["']([0-9A-Fa-f:\-]{11,17})["']"#,
                             #""userMac"\s*:\s*"([0-9A-Fa-f:\-]{11,17})""#,
@@ -325,7 +355,7 @@ final class GiWifiClient {
         } catch {
             log("获取 Portal 首页失败：\(error.localizedDescription)")
         }
-        return (nasName, mac)
+        return (nasName, mac, requestIp)
     }
 
     /// 正则取第一个捕获组。
