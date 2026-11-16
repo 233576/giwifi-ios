@@ -50,6 +50,8 @@ final class GiWifiClient {
         var portalOrigin: String
         var serverMac: String
         var authState: Int?
+        /// 服务端要求先完善个人信息（resultCode=40），UI 据此给出「打开 Portal 网页」入口。
+        var needsProfile: Bool = false
     }
 
     func login(username: String, password: String, profile: TerminalProfile,
@@ -110,7 +112,7 @@ final class GiWifiClient {
             // 常见是漏掉 / 多出一个后缀（如 GiWiFi_lnsf vs 真实的 GiWiFi_lnsfHG）。
             if let firstAuth, !firstAuth.isSuccess,
                firstAuth.resultCode == 99 || firstAuth.message.contains("CHALLENGE") {
-                for candidate in Self.nasNameVariants(context.nasName).prefix(2) {
+                for candidate in Self.nasNameVariants(context.nasName).prefix(3) {
                     log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试（等 5 秒避开频率限制）")
                     try? await Task.sleep(nanoseconds: 5_200_000_000)
                     var retryContext = context
@@ -123,11 +125,15 @@ final class GiWifiClient {
                                       portalOrigin: retryContext.portal.absoluteString,
                                       serverMac: retryContext.userMac, authState: retry.authState)
                     }
-                    if let retry, retry.resultCode == 108 {
-                        // 身份层已通过，只是账号密码不对 —— 再换 nasName 也没意义
-                        return Result(online: false, message: retry.displayText,
+                    // 只要结果不再是 CHALLENGE_ERR_DENY，就说明 nasName 已经对了，
+                    // 剩下的是账号本身的问题（密码错、资料没补全等），继续换 nasName 没有意义。
+                    if let retry, !Self.isChallengeDenied(retry) {
+                        return Result(online: false,
+                                      message: Self.guidance(for: retry),
                                       portalOrigin: retryContext.portal.absoluteString,
-                                      serverMac: retryContext.userMac, authState: retry.authState)
+                                      serverMac: retryContext.userMac,
+                                      authState: retry.authState,
+                                      needsProfile: Self.needsProfileCompletion(retry))
                     }
                 }
             }
@@ -179,6 +185,15 @@ final class GiWifiClient {
                 return Result(online: false, message: retryAuth?.displayText ?? "换绑后认证未成功",
                               portalOrigin: context.portal.absoluteString,
                               serverMac: context.userMac, authState: nil)
+            }
+
+            if let firstAuth, !Self.isChallengeDenied(firstAuth) {
+                return Result(online: false,
+                              message: Self.guidance(for: firstAuth),
+                              portalOrigin: context.portal.absoluteString,
+                              serverMac: context.userMac,
+                              authState: firstAuth.authState,
+                              needsProfile: Self.needsProfileCompletion(firstAuth))
             }
 
             return Result(online: false, message: firstAuth?.displayText ?? "认证未成功",
@@ -304,6 +319,37 @@ final class GiWifiClient {
               match.numberOfRanges > 1,
               let range = Range(match.range(at: 1), in: text) else { return nil }
         return String(text[range])
+    }
+
+    /// 是否是 CHALLENGE_ERR_DENY（网关名不匹配）。
+    static func isChallengeDenied(_ response: PortalResponse) -> Bool {
+        response.resultCode == 99 || response.message.uppercased().contains("CHALLENGE")
+    }
+
+    /// 服务端要求先补全个人信息。
+    static func needsProfileCompletion(_ response: PortalResponse) -> Bool {
+        response.resultCode == 40
+            || response.message.contains("完善")
+            || response.message.contains("个人信息")
+    }
+
+    /// 把服务端错误码翻译成「下一步该做什么」，避免用户只看到一串英文。
+    static func guidance(for response: PortalResponse) -> String {
+        let original = response.message
+        if needsProfileCompletion(response) {
+            return "服务端要求先完善个人信息（resultCode 40）。请点下面「打开 Portal 网页」，"
+                + "用同一账号登录一次，按提示补全手机号 / 院系资料，再回来重新认证。"
+        }
+        switch response.resultCode {
+        case 108:
+            return "账号或密码不对（108）：\(original)"
+        case 102:
+            return "请求太频繁，等 5 秒再试（102）：\(original)"
+        case 203, 43:
+            return "该账号已绑定其它设备（\(response.resultCode ?? -1)）：\(original)"
+        default:
+            return original.isEmpty ? "认证未通过（resultCode=\(response.resultCode ?? -1)）" : original
+        }
     }
 
     /// nasName 兜底候选：网关名常带后缀（HG / BRAS 等），HTML 抓到的往往少了后缀。
@@ -556,7 +602,8 @@ final class GiWifiClient {
             }
             let parsed = PortalResponse.parse(body)
             if let parsed, !parsed.isSuccess {
-                log("\(name)：原文 \(body.prefix(300))")
+                log("\(name)：密文 \(body.prefix(160))")
+                log("\(name)：明文 \(parsed.rawPayload)")
             }
             return parsed
         } catch {
