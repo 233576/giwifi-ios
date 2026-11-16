@@ -43,6 +43,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var logs: [LogLine] = []
     @Published private(set) var autoRunning = false
     @Published var errorText: String?
+    /// 服务端要求先完善个人信息（resultCode=40），首页会多出一个「打开 Portal 网页」按钮。
+    @Published private(set) var needsProfile = false
 
     private var autoTask: Task<Void, Never>?
     private static let settingsKey = "giwifi.settings.v1"
@@ -157,12 +159,14 @@ final class AppStore: ObservableObject {
         portal = result.portalOrigin
         if !result.serverMac.isEmpty { serverMac = result.serverMac }
         if result.online {
+            needsProfile = false
             state = .online
             detail = result.message.isEmpty ? "已认证，可以上网了" : result.message
             append("认证成功：\(detail)")
         } else {
             state = .failed
             detail = result.message.isEmpty ? "认证未通过" : result.message
+            needsProfile = result.needsProfile
             append("认证失败：\(detail)")
         }
     }
