@@ -108,6 +108,23 @@ scripts/                            构建、打包、图标、校验脚本
 - 整体 AES-128-ECB/PKCS7 → Base64 → form 编码 → `data=<...>`
 - UA：`okhttp/3.8.0`；`nasName` 为 `GIWIFI-BAS` 时以小写上报
 
+### `nasName` 是认证成败的关键（实测）
+
+`authLogin` 返回 `resultCode=99 CHALLENGE_ERR_DENY` 基本只有一个原因：**`nasName` 和该 IP 实际所属的网关对不上**。
+
+实测环境（岭南师范学院，Portal `http://100.100.9.2/gportal/web/login`）：
+
+| 来源 | 值 |
+| --- | --- |
+| Portal 页面 `<input name="nas_name">` / `wlanacname` | `GiWiFi_lnsf` |
+| `queryAuthState` 返回（服务端真值） | **`GiWiFi_lnsfHG`** |
+| 用 `GiWiFi_lnsf` 发 authLogin | `99 CHALLENGE_ERR_DENY` |
+| 用 `GiWiFi_lnsfHG` 发 authLogin | `108 账户不存在或密码错误`（说明身份层已通过） |
+
+所以取值顺序是：**设置里手填 > `queryAuthState` 返回的 `nasName` > Portal 页面抓取**；若仍被 `CHALLENGE_ERR_DENY` 拒绝，会自动给 `nasName` 换常见后缀（`HG` / `BRAS` / …）重试一次（中间等 5 秒，避开服务端的频率限制 `102`）。
+
+顺带一提：`queryAuthState` 是**按 `userIp` 返回该 IP 的会话**，`userName` 传什么都一样——所以 iOS 拿不到真实 MAC 时，靠它就能拿到网关侧看到的真实 `userMac` 和 `nasName`。另外 Portal 首页用 `okhttp` UA 会被 403，用浏览器 UA 才返回 200。
+
 ---
 
 ## 五、已知限制
