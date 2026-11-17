@@ -50,6 +50,8 @@ final class AppStore: ObservableObject {
     /// 网关拒绝了 API 认证（CHALLENGE_ERR_DENY），此时只能走内置网页登录。
     @Published private(set) var needsWebAuth = false
     @Published private(set) var needsRebind = false
+    /// 手动换绑进行中（按钮上转圈用）。
+    @Published private(set) var rebinding = false
 
     private var autoTask: Task<Void, Never>?
     private static let settingsKey = "giwifi.settings.v2"
@@ -335,6 +337,32 @@ final class AppStore: ObservableObject {
     private var forceRebind = false
     /// 43 时服务端返回的绑定链接路径。
     private var rebindPath = ""
+
+    /// 常驻按钮：换绑到本机。
+    /// 先跑一次认证让服务端把 43 的绑定链接吐出来，再走 GET；
+    /// 拿不到链接就退回 reBindMac。
+    func rebindDevice() async {
+        guard !settings.username.isEmpty else {
+            errorText = "请先在「设置 → 账号管理」添加校园网账号"
+            return
+        }
+        guard state != .connecting else { return }
+        rebinding = true
+        defer { rebinding = false }
+
+        append("==== 手动换绑：\(currentAccountName) ====")
+        rebindPath = ""
+        await login()
+        if !rebindPath.isEmpty {
+            await confirmRebind()
+        } else if !needsRebind {
+            // 没命中 43（可能已经在线，或网关没给链接）→ 强制 reBindMac 一次
+            append("没有拿到绑定链接，强制走 reBindMac")
+            errorText = nil
+            forceRebind = true
+            await login()
+        }
+    }
 
     /// 确认把账号换绑到当前设备（服务端 43/203 时使用）。
     func confirmRebind() async {
