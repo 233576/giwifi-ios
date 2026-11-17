@@ -1,14 +1,14 @@
 # GiWiFi 助手（iOS）
 
 GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiWifi](https://github.com/Mhenwa/xGiWifi) 的功能集：
-**一键认证、掉线自动重连、设备身份伪装、多端（手机/平板/自定义机型）切换、完整运行日志**。
+**一键认证、掉线自动重连、设备身份伪装、多账号切换、手机/平板/电脑三种上报身份、完整运行日志**。
 
 协议按 xGiWifi 的 Dart 实现逐字段对齐（AES-128-ECB + MD5 签名 + `data=` 表单体），不是网页套壳，也不依赖 WebView。
 
 - 最低系统：iOS 16.0
 - 设备：iPhone / iPad（arm64）
 - Bundle ID：`com.giwifi.ios`
-- 版本：1.1.0 (2)
+- 版本：1.2.0 (3)
 
 ---
 
@@ -19,7 +19,10 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 | 一键认证 | 探测 Portal → 账号层 `appLogin.bin` → `queryAuthState` → `authLogin` |
 | 自动重连 | 每 N 秒（默认 30，可调 10–300）查一次在线状态，掉线自动重新认证 |
 | 设备伪装 | 认证报文里的 `staModel` / `btype` / `staType` / `userMac` 由「设备档案」决定 |
-| 多端切换 | 顶部档案胶囊一键切换：Android 手机 / Android 平板 / 小米 / 华为平板 / 自定义 |
+| 多账号 | 设置 → 账号管理，可存多个校园网账号，点谁就登录谁；每个账号独立 `appUuid` |
+| 多端切换 | 主页 / 设置里一键切换 **手机 / 平板 / 电脑**（型号统一用苹果），报文与网页 UA 一起变 |
+| 启动自动检测 | 打开 App 等 2 秒后自动查一次在线状态，不打扰、不误触发认证 |
+| 底部导航 | 主页 / 日志 / 设置 三个页面用悬浮胶囊导航切换 |
 | 设备冲突换绑 | 命中 `errorCode=43` 或「已绑定」提示时自动调用 `reBindMac`，等 4 秒重探再认证一次 |
 | 运行日志 | 每一步请求与响应结果都记录，可复制反馈 |
 | 指定 Portal | 设置里可填站点（默认 `http://100.100.9.2/gportal/web/login`），跳过公网探测直连 |
@@ -36,11 +39,21 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 
 ### 界面
 
-v1.1.0 起整体换成**液态玻璃（Liquid Glass）风格**：深色极光渐变底 + 三团彩色光晕 + 半透明毛玻璃卡片，
-卡片带左上高光描边、右下暗边与投影，状态环是玻璃圆盘内嵌渐变进度弧，按钮按下有回弹缩放。
+扁平深色风格（`Sources/Views/FlatTheme.swift`）：纯色底 + 面色卡片 + 1px 描边，无阴影无毛玻璃；
+强调色 `#3B82F6`，状态用绿 / 橙 / 红区分。底部是悬浮胶囊导航（主页 / 日志 / 设置）。
 
-iOS 26 有系统级 `.glassEffect()`，但本工程最低支持 iOS 16，所以用 `Material` + 多层描边高光手搓了等效质感
-（`Sources/Views/GlassTheme.swift`），在 iOS 16–26 上观感一致，不依赖新系统 API。
+### 上报身份
+
+GiWiFi 只区分三类设备，型号统一用苹果，避免各种品牌机型对不上：
+
+| 类别 | btype | staType | staModel |
+| --- | --- | --- | --- |
+| 手机 | 1 | phone | `Apple,iPhone 16 Pro,35,15` |
+| 平板 | 2 | pad | `Apple,iPad Pro 13,35,15` |
+| 电脑 | 3 | pc | `Apple,MacBook Pro,35,15` |
+
+内置网页登录用的是 Safari 的 iPhone / iPad / Mac UA（`okhttp` UA 会被 Portal 403）。
+需要特定机型时，主页「自定义机型」或 设置 → 自定义机型 里加。
 
 ---
 
@@ -55,7 +68,7 @@ iOS 26 有系统级 `.glassEffect()`，但本工程最低支持 iOS 16，所以�
 ```
 
 > 注意：**私有仓库 + 免费账号拿不到 macOS runner**（job 会秒 cancelled）。要么仓库公开，要么升级 Pro/Team，要么用方式 B。
-> runner 用 `macos-15`；`macos-14` 在部分账号上会报 `The configuration 'macos-14-arm64-us-default' is not supported`，`macos-13` 已退役。
+> runner 用 `macos-15-intel`；`macos-14` 在部分账号上会报 `The configuration 'macos-14-arm64-us-default' is not supported`，`macos-13` 已退役，`macos-15` 高峰期会长时间排队。
 
 ### 方式 B：任意 Mac
 
@@ -78,6 +91,9 @@ Sources/Core/NetworkIdentity.swift  本机 IP / MAC 读取
 Sources/Core/TerminalProfile.swift  设备档案与设置模型
 Sources/Core/AppStore.swift         状态机、自动重连、日志
 Sources/Core/Keychain.swift         密码存档
+Sources/Views/AppShell.swift        底部导航外壳
+Sources/Views/FlatTheme.swift       扁平主题（颜色 / 卡片 / 按钮 / chip）
+Sources/Views/AccountsView.swift    账号管理
 Sources/Views/                      SwiftUI 界面
 scripts/                            构建、打包、图标、校验脚本
 .github/workflows/                  CI
