@@ -36,6 +36,9 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 try { Add-Type -AssemblyName System.Net.Http } catch {}
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+# 抓包工具的代理残留会让 .NET 走 127.0.0.1:9000 并报 10013，这里强制直连
+try { [System.Net.WebRequest]::DefaultWebProxy = $null } catch {}
+try { [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy } catch {}
 
 $RootDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $ApiRoot = 'https://api.github.com'
