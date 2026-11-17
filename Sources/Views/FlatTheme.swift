@@ -136,10 +136,11 @@ struct FlatPill: ViewModifier {
         content
             .background {
                 Capsule(style: .continuous)
-                    .fill(selected ? tint : Flat.surfaceHigh)
+                    .fill(selected ? tint.opacity(0.18) : Flat.surfaceHigh)
                     .overlay {
                         Capsule(style: .continuous)
-                            .strokeBorder(selected ? Color.clear : Flat.strokeStrong, lineWidth: 1)
+                            .strokeBorder(selected ? tint.opacity(0.55) : Flat.strokeStrong,
+                                          lineWidth: 1)
                     }
             }
     }
