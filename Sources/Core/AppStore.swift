@@ -326,17 +326,39 @@ final class AppStore: ObservableObject {
             needsProfile = result.needsProfile
             needsWebAuth = result.needsWebAuth
             needsRebind = result.needsRebind
+            rebindPath = result.bindPath
             append("认证失败：\(detail)")
         }
     }
 
     /// 用户在弹窗里点了「换绑到本机」：这一次强制走 reBindMac。
     private var forceRebind = false
+    /// 43 时服务端返回的绑定链接路径。
+    private var rebindPath = ""
 
     /// 确认把账号换绑到当前设备（服务端 43/203 时使用）。
     func confirmRebind() async {
         errorText = nil
         needsRebind = false
+
+        // 43 时服务端会回一条 /Giportal/index.php/Sta/bindSta?token=..&sign=..
+        // 官方 App 的「确认完成绑定」就是 GET 这个链接，比 reBindMac 更直接。
+        if !rebindPath.isEmpty, let portal = URL(string: portal) {
+            append("用户确认换绑，打开服务端绑定链接")
+            let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
+                Task { @MainActor in self?.append(line) }
+            }
+            let ok = await client.completeBind(portal: portal, path: rebindPath, profile: currentProfile)
+            rebindPath = ""
+            if ok {
+                append("绑定完成，等待 2 秒后重试认证")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await login()
+                return
+            }
+            append("绑定链接未成功，改用 reBindMac 兜底")
+        }
+
         forceRebind = true
         append("用户确认换绑设备，开始 reBindMac")
         await login()
