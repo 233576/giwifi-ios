@@ -46,13 +46,13 @@ struct RootView: View {
                     }
                 }
             }
-            .alert("提示", isPresented: Binding(
-                get: { store.errorText != nil },
+            .alert(store.rebindAlertTitle, isPresented: Binding(
+                get: { store.errorText != nil || store.needsRebind },
                 set: { if !$0 { store.clearError() } }
             )) {
-                if store.needsRebind {
-                    Button("换绑到本机") {
-                        Task { await store.confirmRebind() }
+                if store.rebindAvailable {
+                    Button("立即换绑到本机") {
+                        Task { await store.rebindDevice() }
                     }
                 }
                 if store.needsProfile || store.needsWebAuth {
@@ -60,7 +60,13 @@ struct RootView: View {
                 }
                 Button("取消", role: .cancel) { store.clearError() }
             } message: {
-                Text(store.errorText ?? "")
+                if let error = store.errorText {
+                    Text(error)
+                } else if store.needsRebind {
+                    Text("这一条要先把账号从原来那台设备换绑过来，才能继续上网。\n\n\(store.detail)")
+                } else {
+                    Text(store.detail)
+                }
             }
         }
     }
