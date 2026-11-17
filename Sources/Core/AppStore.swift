@@ -1,12 +1,13 @@
 import Foundation
 import Combine
 
-/// 应用状态机：负责认证、状态轮询、自动重连与日志。
+/// 应用状态机：负责认证、状态轮询、自动重连、多账号与日志。
 @MainActor
 final class AppStore: ObservableObject {
 
     enum ConnectState: String {
         case idle
+        case checking
         case connecting
         case online
         case offline
@@ -15,6 +16,7 @@ final class AppStore: ObservableObject {
         var title: String {
             switch self {
             case .idle: return "未连接"
+            case .checking: return "检测中"
             case .connecting: return "认证中"
             case .online: return "已在线"
             case .offline: return "未认证"
@@ -37,7 +39,7 @@ final class AppStore: ObservableObject {
 
     @Published private(set) var settings: AccountSettings = AccountSettings.default()
     @Published private(set) var state: ConnectState = .idle
-    @Published private(set) var detail: String = "连接校园网 Wi-Fi 后点「立即认证」"
+    @Published private(set) var detail: String = "连上校园网 Wi-Fi 后会自动检测状态"
     @Published private(set) var portal: String = ""
     @Published private(set) var serverMac: String = ""
     @Published private(set) var logs: [LogLine] = []
@@ -49,27 +51,167 @@ final class AppStore: ObservableObject {
     @Published private(set) var needsWebAuth = false
 
     private var autoTask: Task<Void, Never>?
-    private static let settingsKey = "giwifi.settings.v1"
+    private static let settingsKey = "giwifi.settings.v2"
+    private static let legacySettingsKey = "giwifi.settings.v1"
     private static let logLimit = 300
 
     nonisolated init() {}
 
-    /// 从 UserDefaults 与钥匙串恢复上次的账号与参数。
+    // MARK: - 持久化
+
+    /// 从 UserDefaults 与钥匙串恢复账号与参数，并做一次旧版数据迁移。
     func restore() {
         var loaded = settings
-        if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
-           let decoded = try? JSONDecoder().decode(AccountSettings.self, from: data) {
+        var data = UserDefaults.standard.data(forKey: Self.settingsKey)
+        if data == nil { data = UserDefaults.standard.data(forKey: Self.legacySettingsKey) }
+        if let data, let decoded = try? JSONDecoder().decode(AccountSettings.self, from: data) {
             loaded = decoded
         }
-        if let password = Keychain.load(), !password.isEmpty {
+
+        // 旧版只有一个账号：迁移成 accounts 里的一条。
+        if loaded.accounts.isEmpty, !loaded.username.isEmpty {
+            let migrated = Account(name: loaded.username, username: loaded.username,
+                                   appUuid: loaded.appUuid)
+            loaded.accounts = [migrated]
+            loaded.currentAccountID = migrated.id
+            let legacyPassword = loaded.password
+            if !legacyPassword.isEmpty {
+                Keychain.save(legacyPassword, account: migrated.id.uuidString)
+            }
+        }
+
+        if let id = loaded.currentAccountID,
+           let account = loaded.accounts.first(where: { $0.id == id }) {
+            loaded.username = account.username
+            loaded.appUuid = account.appUuid
+            loaded.password = Keychain.load(account: id.uuidString) ?? loaded.password
+        } else if let first = loaded.accounts.first {
+            loaded.currentAccountID = first.id
+            loaded.username = first.username
+            loaded.appUuid = first.appUuid
+            loaded.password = Keychain.load(account: first.id.uuidString) ?? ""
+        } else if let password = Keychain.load(), !password.isEmpty {
             loaded.password = password
         }
+
         settings = loaded
+        persist()
     }
 
-    // MARK: - 设置读写
+    private func persist() {
+        var copy = settings
+        if let id = copy.currentAccountID,
+           let index = copy.accounts.firstIndex(where: { $0.id == id }) {
+            copy.accounts[index].username = copy.username
+            copy.accounts[index].appUuid = copy.appUuid
+            if copy.accounts[index].name.trimmingCharacters(in: .whitespaces).isEmpty {
+                copy.accounts[index].name = copy.username
+            }
+        }
+        settings = copy
+        if let data = try? JSONEncoder().encode(copy) {
+            UserDefaults.standard.set(data, forKey: Self.settingsKey)
+        }
+        let key = copy.currentAccountID?.uuidString ?? "giwifi-credentials"
+        if !copy.password.isEmpty {
+            Keychain.save(copy.password, account: key)
+        } else {
+            Keychain.delete(account: key)
+        }
+    }
+
+    // MARK: - 账号
+
+    var accounts: [Account] { settings.accounts }
+
+    var currentAccount: Account? { settings.currentAccount }
+
+    var currentAccountName: String {
+        currentAccount?.displayName ?? (settings.username.isEmpty ? "未添加账号" : settings.username)
+    }
+
+    @discardableResult
+    func addAccount(name: String, username: String, password: String) -> Account {
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let account = Account(name: trimmedName.isEmpty ? trimmedUser : trimmedName,
+                              username: trimmedUser,
+                              appUuid: GiWifiProtocol.makeAppUuid())
+        updateSettings { copy in
+            copy.accounts.append(account)
+            copy.currentAccountID = account.id
+            copy.username = account.username
+            copy.appUuid = account.appUuid
+            copy.password = password
+        }
+        Keychain.save(password, account: account.id.uuidString)
+        append("已添加账号：\(account.displayName)")
+        return account
+    }
+
+    func updateAccount(_ id: UUID, name: String, username: String, password: String?) {
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        updateSettings { copy in
+            guard let index = copy.accounts.firstIndex(where: { $0.id == id }) else { return }
+            copy.accounts[index].name = trimmedName.isEmpty ? trimmedUser : trimmedName
+            copy.accounts[index].username = trimmedUser
+            if copy.currentAccountID == id {
+                copy.username = trimmedUser
+                if let password { copy.password = password }
+            }
+        }
+        if let password { Keychain.save(password, account: id.uuidString) }
+    }
+
+    func deleteAccount(_ id: UUID) {
+        let removed = settings.accounts.first(where: { $0.id == id })
+        updateSettings { copy in
+            copy.accounts.removeAll(where: { $0.id == id })
+            if copy.currentAccountID == id {
+                let next = copy.accounts.first
+                copy.currentAccountID = next?.id
+                copy.username = next?.username ?? ""
+                copy.appUuid = next?.appUuid ?? GiWifiProtocol.makeAppUuid()
+                copy.password = ""
+            }
+        }
+        Keychain.delete(account: id.uuidString)
+        if let removed { append("已删除账号：\(removed.displayName)") }
+        if state != .connecting { state = .idle }
+    }
+
+    /// 切换当前账号（不发起认证）。
+    func selectAccount(_ id: UUID) {
+        guard let account = settings.accounts.first(where: { $0.id == id }) else { return }
+        let password = Keychain.load(account: id.uuidString) ?? ""
+        updateSettings { copy in
+            copy.currentAccountID = id
+            copy.username = account.username
+            copy.appUuid = account.appUuid
+            copy.password = password
+        }
+        state = .idle
+        detail = "已切换到 \(account.displayName)"
+        append("切换账号：\(account.displayName)（\(account.username)）")
+    }
+
+    /// 切换并立即认证指定账号。
+    func loginAccount(_ id: UUID) async {
+        selectAccount(id)
+        await login()
+    }
+
+    func resetAppUuid() {
+        updateSettings { $0.appUuid = GiWifiProtocol.makeAppUuid() }
+        append("已重置设备标识：\(settings.appUuid)")
+    }
+
+    // MARK: - 设置
 
     var profiles: [TerminalProfile] { settings.allProfiles }
+
+    var customProfiles: [TerminalProfile] { settings.customProfiles }
 
     var currentProfile: TerminalProfile { settings.selectedProfile }
 
@@ -80,12 +222,18 @@ final class AppStore: ObservableObject {
         persist()
     }
 
+    /// 切换到某个设备类别（手机 / 平板 / 电脑）。
+    func selectKind(_ kind: DeviceKind) {
+        updateSettings { $0.selectedProfileID = TerminalProfile.builtin(for: kind).id }
+    }
+
     func selectProfile(_ id: UUID) {
         updateSettings { $0.selectedProfileID = id }
     }
 
     func addProfile(_ profile: TerminalProfile) {
         updateSettings { $0.customProfiles.append(profile) }
+        selectProfile(profile.id)
     }
 
     func updateProfile(_ profile: TerminalProfile) {
@@ -100,32 +248,34 @@ final class AppStore: ObservableObject {
         updateSettings { copy in
             copy.customProfiles.removeAll(where: { $0.id == id })
             if copy.selectedProfileID == id {
-                copy.selectedProfileID = TerminalProfile.android.id
+                copy.selectedProfileID = TerminalProfile.phone.id
             }
         }
     }
 
-    func resetAppUuid() {
-        updateSettings { $0.appUuid = GiWifiProtocol.makeAppUuid() }
-        append("已重置设备标识：\(settings.appUuid)")
-    }
+    // MARK: - 启动自动检测
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(settings) {
-            UserDefaults.standard.set(data, forKey: Self.settingsKey)
+    /// 打开 App 后等 2 秒再静默检测一次状态（不触发认证）。
+    func autoDetectOnLaunch() async {
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        guard !Task.isCancelled else { return }
+        guard !settings.username.isEmpty else {
+            state = .idle
+            detail = "还没有账号，去「设置 → 账号管理」添加"
+            append("未检测：尚未添加账号")
+            return
         }
-        if !settings.password.isEmpty {
-            Keychain.save(settings.password)
-        } else {
-            Keychain.delete()
-        }
+        state = .checking
+        detail = "正在检测当前网络状态…"
+        append("==== 启动自动检测 ====")
+        await refreshState()
     }
 
     // MARK: - 认证
 
     func login(auto: Bool = false) async {
         guard !settings.username.isEmpty else {
-            errorText = "请先填写校园网账号"
+            errorText = "请先在「设置 → 账号管理」添加校园网账号"
             return
         }
         guard state != .connecting else { return }
@@ -134,10 +284,11 @@ final class AppStore: ObservableObject {
         state = .connecting
         detail = auto ? "自动重连中…" : "正在认证…"
         if !auto { logs.removeAll() }
-        append("==== \(auto ? "自动重连" : "开始认证")：\(settings.username) ====")
-        append("设备档案：\(currentProfile.name)｜\(currentProfile.subtitle)")
-
         let profile = currentProfile
+        append("==== \(auto ? "自动重连" : "开始认证")：\(currentAccountName) ====")
+        append("设备档案：\(profile.kind.title)｜\(profile.subtitle)")
+        append("浏览器 UA（\(profile.kind.title)）：\(profile.kind.userAgent)")
+
         let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
             Task { @MainActor in self?.append(line) }
         }
@@ -177,14 +328,19 @@ final class AppStore: ObservableObject {
 
     /// 只查在线状态，不触发认证。
     func refreshState() async {
-        guard !settings.username.isEmpty else { return }
+        guard !settings.username.isEmpty else {
+            state = .idle
+            return
+        }
         let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
             Task { @MainActor in self?.append(line) }
         }
+        let wasChecking = state == .checking
         guard let result = await client.checkState(username: settings.username,
                                                    appUuid: settings.appUuid,
                                                    profile: currentProfile) else {
             if state != .connecting { state = .offline }
+            if wasChecking { detail = "检测失败，请确认已连上校园网" }
             return
         }
         portal = result.portalOrigin
@@ -241,8 +397,8 @@ final class AppStore: ObservableObject {
             Task { @MainActor in self?.append(line) }
         }
         if let result = await client.checkState(username: settings.username,
-                                                   appUuid: settings.appUuid,
-                                                   profile: currentProfile) {
+                                                appUuid: settings.appUuid,
+                                                profile: currentProfile) {
             if !result.serverMac.isEmpty { serverMac = result.serverMac }
             if result.online {
                 if state != .online {
@@ -266,7 +422,8 @@ final class AppStore: ObservableObject {
         if logs.count > Self.logLimit {
             logs.removeFirst(logs.count - Self.logLimit)
         }
-        if !autoRunning, state == .connecting, trimmed.count < 40, detail.hasPrefix("正在") {
+        if !autoRunning, state == .connecting, trimmed.count < 40,
+           detail.hasPrefix("正在") {
             detail = trimmed
         }
     }
