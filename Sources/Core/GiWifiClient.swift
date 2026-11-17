@@ -56,6 +56,8 @@ final class GiWifiClient {
         var needsWebAuth: Bool = false
         /// 服务端回 43/203：账号绑在别的设备上，需要确认换绑。
         var needsRebind: Bool = false
+        /// 43 时服务端给的换绑链接（GET 即完成绑定）。
+        var bindPath: String = ""
     }
 
     func login(username: String, password: String, profile: TerminalProfile,
@@ -198,9 +200,12 @@ final class GiWifiClient {
             }
 
             if let firstAuth, !Self.isChallengeDenied(firstAuth) {
-                let bindConflict = allowRebind == false && firstAuth.requiresRebind
+                let bindConflict = firstAuth.requiresRebind
                 if bindConflict {
                     log("检测到设备冲突（43/203），等待用户确认换绑")
+                    if !firstAuth.bindPath.isEmpty {
+                        log("服务端给了绑定链接：\(firstAuth.bindPath.prefix(90))…")
+                    }
                 }
                 return Result(online: false,
                               message: Self.guidance(for: firstAuth),
@@ -208,7 +213,8 @@ final class GiWifiClient {
                               serverMac: context.userMac,
                               authState: firstAuth.authState,
                               needsProfile: Self.needsProfileCompletion(firstAuth),
-                              needsRebind: bindConflict)
+                              needsRebind: bindConflict,
+                              bindPath: firstAuth.bindPath)
             }
 
             // 走到这里说明所有 nasName 候选都被 CHALLENGE_ERR_DENY 拒了。
@@ -596,6 +602,38 @@ final class GiWifiClient {
 
         return await postPortal(path: "/gportal/app/authLogin", fields: fields,
                                 encodedField: "passwd", portal: context.portal, name: "认证")
+    }
+
+    /// 43 时服务端返回 `/Giportal/index.php/Sta/bindSta?token=..&sign=..`，
+    /// 用同一个 session（带着登录后的 cookie）GET 一次就完成换绑。
+    func completeBind(portal: URL, path: String, profile: TerminalProfile) async -> Bool {
+        guard var comps = URLComponents(url: portal, resolvingAgainstBaseURL: false),
+              let host = comps.host else { return false }
+        comps.path = path.components(separatedBy: "?").first ?? path
+        if let query = path.components(separatedBy: "?").dropFirst().first {
+            comps.query = query
+        }
+        comps.port = portal.port
+        guard let url = comps.url, !host.isEmpty else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(GiWifiProtocol.browserUserAgent(for: profile), forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await session.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let text = String(data: data, encoding: .utf8) ?? ""
+            log("换绑链接 GET：HTTP \(code)，返回 \(text.count) 字节")
+            if !text.isEmpty {
+                let head = text.replacingOccurrences(of: "\n", with: " ").prefix(120)
+                log("换绑响应：\(head)")
+            }
+            return code == 200
+        } catch {
+            log("换绑链接 GET 失败：\(error.localizedDescription)")
+            return false
+        }
     }
 
     private func rebindMac(context: Context, username: String, password: String,
