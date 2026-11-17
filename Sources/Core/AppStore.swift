@@ -316,7 +316,7 @@ final class AppStore: ObservableObject {
                                            profile: profile)
         }
 
-        guard let result else {
+        guard var result = result else {
             state = .failed
             detail = "无法连接认证服务器，请确认已连上校园网"
             append("认证失败：无响应")
