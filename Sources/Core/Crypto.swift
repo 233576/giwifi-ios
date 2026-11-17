@@ -87,6 +87,79 @@ enum Crypto {
         return String(data: buffer.prefix(plainLength), encoding: .utf8)
     }
 
+    // MARK: - AES-128-CBC + ZeroPadding（Portal 网页登录用）
+
+    /// 复刻官方 Portal 页面的 `cryptoEncode()`：
+    /// ```js
+    /// CryptoJS.AES.encrypt(data, Utf8.parse("1234567887654321"), {
+    ///     iv: Utf8.parse(iv), mode: CBC, padding: ZeroPadding })
+    /// ```
+    /// 注意是 **ZeroPadding**（补 0x00），不是 PKCS7；正好对齐时不再补整块。
+    static func aes128CBCZeroPadBase64(plaintext: String, key: String, iv: String) -> String? {
+        let keyData = Data(key.utf8)
+        let ivData = Data(iv.utf8)
+        guard keyData.count == kCCKeySizeAES128, ivData.count == kCCBlockSizeAES128 else { return nil }
+
+        var inputData = Data(plaintext.utf8)
+        let remainder = inputData.count % kCCBlockSizeAES128
+        if remainder != 0 {
+            inputData.append(Data(repeating: 0, count: kCCBlockSizeAES128 - remainder))
+        }
+
+        let bufferSize = inputData.count + kCCBlockSizeAES128
+        var buffer = Data(count: bufferSize)
+        var encryptedLength = 0
+
+        let status = buffer.withUnsafeMutableBytes { outBytes -> CCCryptorStatus in
+            guard let outBase = outBytes.baseAddress else { return CCCryptorStatus(kCCMemoryFailure) }
+            return inputData.withUnsafeBytes { inBytes -> CCCryptorStatus in
+                guard let inBase = inBytes.baseAddress else { return CCCryptorStatus(kCCMemoryFailure) }
+                return keyData.withUnsafeBytes { keyBytes -> CCCryptorStatus in
+                    ivData.withUnsafeBytes { ivBytes -> CCCryptorStatus in
+                        CCCrypt(
+                            CCOperation(kCCEncrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            0,                       // 无 ECB、无 PKCS7 → 纯 CBC
+                            keyBytes.baseAddress, keyData.count,
+                            ivBytes.baseAddress,
+                            inBase, inputData.count,
+                            outBase, bufferSize,
+                            &encryptedLength
+                        )
+                    }
+                }
+            }
+        }
+
+        guard status == CCCryptorStatus(kCCSuccess) else { return nil }
+        return buffer.prefix(encryptedLength).base64EncodedString()
+    }
+
+    /// jQuery `$.serialize()` 的等价实现：`k=v&k=v`，值和键都按 `application/x-www-form-urlencoded` 编码
+    /// （空格转 `+`，其余非安全字符 `%XX` 大写）。
+    static func formSerialize(_ pairs: [(String, String)]) -> String {
+        pairs
+            .filter { !$0.0.isEmpty }
+            .map { encodeComponent($0.0) + "=" + encodeComponent($0.1) }
+            .joined(separator: "&")
+    }
+
+    private static func encodeComponent(_ value: String) -> String {
+        var output = String()
+        output.reserveCapacity(value.count * 3)
+        for byte in value.utf8 {
+            switch byte {
+            case 0x30...0x39, 0x41...0x5A, 0x61...0x7A, 0x2D, 0x5F, 0x2E, 0x2A:
+                output.append(Character(UnicodeScalar(byte)))
+            case 0x20:
+                output.append("+")   // jQuery serialize 把空格写成 +
+            default:
+                output.append(String(format: "%%%02X", byte))
+            }
+        }
+        return output
+    }
+
     // MARK: - Java form 编码
 
     /// 等价于 `java.net.URLEncoder.encode(value, "UTF-8")`：
