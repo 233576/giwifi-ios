@@ -337,7 +337,7 @@ final class AppStore: ObservableObject {
             detail = result.message.isEmpty ? "认证未通过" : result.message
             needsProfile = result.needsProfile
             needsWebAuth = result.needsWebAuth
-            needsRebind = result.needsRebind
+            needsRebind = result.needsRebind || Self.looksLikeRebind(detail)
             rebindPath = result.bindPath
             append("认证失败：\(detail)")
         }
@@ -349,6 +349,25 @@ final class AppStore: ObservableObject {
     /// 服务端错误文案里是否带 CHALLENGE_ERR_DENY。
     private static func looksLikeChallengeDenied(_ text: String) -> Bool {
         text.uppercased().contains("CHALLENGE")
+    }
+
+    /// 服务端这条消息是不是在说「账号绑在别的设备上」。
+    static func looksLikeRebind(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        for needle in ["绑定", "换绑", "其它设备", "其他设备", "绑定本机", "重新绑定",
+                       "43", "203", "bindSta", "已经在线", "已在其它"] {
+            if text.contains(needle) { return true }
+        }
+        return false
+    }
+
+    /// 是否需要给用户弹「换绑」窗（常驻按钮也用它高亮）。
+    var rebindAvailable: Bool {
+        needsRebind || Self.looksLikeRebind(errorText ?? "") || Self.looksLikeRebind(detail)
+    }
+
+    var rebindAlertTitle: String {
+        rebindAvailable ? "需要换绑设备" : "提示"
     }
 
     /// 常驻按钮：直接用网页表单登录（不经 API 认证）。
@@ -386,9 +405,12 @@ final class AppStore: ObservableObject {
         } else {
             state = .failed
             detail = result.message.isEmpty ? "网页登录未通过" : result.message
-            needsRebind = result.needsRebind
+            needsRebind = result.needsRebind || Self.looksLikeRebind(detail)
             rebindPath = result.bindPath
             append("网页登录失败：\(detail)")
+            if needsRebind {
+                append("这条消息需要换绑设备：点下面「立即换绑到本机」。")
+            }
         }
     }
     /// 43 时服务端返回的绑定链接路径。
