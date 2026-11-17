@@ -60,6 +60,76 @@ enum GiWifiProtocol {
     /// 账号层默认 service_type（GiWiFi 用户）。
     static let defaultServiceType = 1
 
+    // MARK: - 网页表单登录（/gportal/Web/loginAction）
+
+    /// Portal 网页登录固定的 AES 密钥，来自页面内联脚本：
+    /// `CryptoJS.AES.encrypt(data, Utf8.parse("1234567887654321"), {iv, CBC, ZeroPadding})`
+    static let webLoginAESKey = "1234567887654321"
+
+    /// 网页登录提交路径。
+    static let webLoginPath = "/gportal/Web/loginAction"
+
+    /// 从 Portal 登录页解析 `#loginForm` 的隐藏域（含 `iv`）。
+    ///
+    /// 页面里每个表单各带一份 `sign`/`iv`/`nas_name`，只取 `id="loginForm"` 那一段，
+    /// 否则会拿到注册 / 改密表单的同名字段。
+    static func parseLoginForm(_ html: String) -> (pairs: [(String, String)], iv: String)? {
+        guard let start = html.range(of: "id=\"loginForm\"") else { return nil }
+        let tail = html[start.upperBound...]
+        guard let end = tail.range(of: "</form>") else { return nil }
+        let fragment = String(tail[..<end.lowerBound])
+
+        var pairs: [(String, String)] = []
+        var iv = ""
+        for inputTag in matches("<input[^>]*>", in: fragment) {
+            guard let name = attribute("name", in: inputTag), !name.isEmpty else { continue }
+            let type = attribute("type", in: inputTag)?.lowercased() ?? "text"
+            guard type == "hidden" else { continue }
+            let value = attribute("value", in: inputTag) ?? ""
+            if name == "iv" { iv = value }
+            pairs.append((name, value))
+        }
+        guard !iv.isEmpty else { return nil }
+        return (pairs, iv)
+    }
+
+    /// 拼出 `$.serialize()` 等价的表单串并加密成 `{"data":..,"iv":..}`。
+    static func webLoginBody(pairs: [(String, String)],
+                             iv: String,
+                             username: String,
+                             password: String) -> String? {
+        var merged = pairs.filter { $0.0 != "user_account" && $0.0 != "user_password" }
+        merged.append(("user_account", username))
+        merged.append(("user_password", password))
+        let serialized = Crypto.formSerialize(merged)
+        guard let encrypted = Crypto.aes128CBCZeroPadBase64(plaintext: serialized,
+                                                            key: webLoginAESKey,
+                                                            iv: iv) else { return nil }
+        let payload: [String: Any] = ["data": encrypted, "iv": iv]
+        guard let json = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let text = String(data: json, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    private static func matches(_ pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, options: [], range: range).compactMap {
+            Range($0.range, in: text).map { String(text[$0]) }
+        }
+    }
+
+    private static func attribute(_ name: String, in tag: String) -> String? {
+        let pattern = name + #"\s*=\s*["']([^"']*)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: tag, options: [], range: NSRange(tag.startIndex..., in: tag)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: tag) else { return nil }
+        return String(tag[range])
+    }
+
     // MARK: - 报文构造
 
     /// 按 key 字典序拼接 `k=v&k=v`（值不做编码，与 APK 一致）。
