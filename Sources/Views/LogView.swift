@@ -3,7 +3,6 @@ import UIKit
 
 struct LogView: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
     var body: some View {
@@ -39,7 +38,7 @@ struct LogView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 96)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -48,10 +47,6 @@ struct LogView: View {
             .toolbarBackground(Flat.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
-                        .foregroundStyle(Flat.textSecondary)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 10) {
                         Button {
@@ -79,6 +74,5 @@ struct LogView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
