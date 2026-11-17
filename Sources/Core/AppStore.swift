@@ -407,6 +407,11 @@ final class AppStore: ObservableObject {
         defer { rebinding = false }
 
         append("==== 手动换绑：\(currentAccountName) ====")
+        // 网页登录（124）已经拿到绑定链接时直接用它，不必再跑一遍 API 认证
+        if !rebindPath.isEmpty {
+            await confirmRebind()
+            return
+        }
         rebindPath = ""
         await login()
         if !rebindPath.isEmpty {
