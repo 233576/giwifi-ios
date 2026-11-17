@@ -101,6 +101,16 @@ final class AppStore: ObservableObject {
         persist()
     }
 
+    /// 记住这次真正生效的网关名，下次第一次就直连它，不再先撞一次 DENY。
+    private func rememberNasName(_ name: String) {
+        guard !name.isEmpty, settings.nasName != name else { return }
+        var next = settings
+        next.nasName = name
+        settings = next
+        persist()
+        append("记住网关名：\(name)（下次直接用它）")
+    }
+
     private func persist() {
         var copy = settings
         if let id = copy.currentAccountID,
@@ -357,6 +367,7 @@ final class AppStore: ObservableObject {
             state = .online
             detail = result.message.isEmpty ? "已认证，可以上网了" : result.message
             append("认证成功：\(detail)")
+            rememberNasName(result.nasName)
         } else {
             state = .failed
             detail = result.message.isEmpty ? "认证未通过" : result.message
