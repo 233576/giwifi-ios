@@ -120,6 +120,15 @@ struct PortalResponse {
     let data: [String: Any]?
     /// 解密后的 data 原文，仅用于日志诊断。
     var rawPayload: String = ""
+    /// 当 `data` 本身是字符串时（例如 43 返回的绑定链接）保留原文。
+    var dataText: String = ""
+
+    /// 43 时服务端会回一条 `/Giportal/index.php/Sta/bindSta?token=..&timestamp=..&sign=..`，
+    /// GET 它即完成换绑（官方 App 的「确认完成绑定」就是这一下）。
+    var bindPath: String {
+        let text = dataText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.hasPrefix("/") ? text : ""
+    }
 
     var isSuccess: Bool { resultCode == 0 || resultCode == 200 }
 
@@ -203,7 +212,11 @@ struct PortalResponse {
            let text = String(data: json, encoding: .utf8) {
             raw = text
         }
-        return PortalResponse(resultCode: code, message: message, data: business, rawPayload: raw)
+        var result = PortalResponse(resultCode: code, message: message, data: business, rawPayload: raw)
+        if let text = payload["data"] as? String, !text.hasPrefix("{"), !text.hasPrefix("[") {
+            result.dataText = text
+        }
+        return result
     }
 
     /// 账号层响应：顶层 `data` 通常是 JSON 字符串。
