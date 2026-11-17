@@ -193,6 +193,17 @@ struct RootView: View {
                 .buttonStyle(FlatButtonStyle(tint: Flat.accent, filled: false, height: 42))
             }
 
+            // 网页表单登录：页内自签，绕开 API 通路的 CHALLENGE_ERR_DENY
+            Button {
+                Task { await store.webLoginNow() }
+            } label: {
+                Label("网页表单登录", systemImage: "text.insert")
+                    .font(.footnote.weight(.medium))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FlatButtonStyle(tint: Flat.purple, filled: false, height: 42))
+            .disabled(store.state == .connecting)
+
             // 常驻入口：账号绑在别的设备上（43/203）时点这里换绑到本机
             Button {
                 Task { await store.rebindDevice() }
