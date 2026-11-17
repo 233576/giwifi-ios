@@ -711,7 +711,7 @@ final class GiWifiClient {
             var req = URLRequest(url: actionURL)
             req.httpMethod = "POST"
             req.timeoutInterval = 15
-            req.setValue("application/json;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+            req.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
             req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
             req.setValue("application/json, text/javascript, */*; q=0.01",
                          forHTTPHeaderField: "Accept")
