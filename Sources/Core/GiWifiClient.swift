@@ -639,6 +639,155 @@ final class GiWifiClient {
         }
     }
 
+    /// 网页表单登录：完全复刻官方 Portal 页面 `#loginForm` 的提交流程。
+    ///
+    /// 走这条路可以绕开 App API 的 `CHALLENGE_ERR_DENY`：
+    /// 页面自己带 `sign`（RSA 现签）、`nas_name`、`sta_ip`，我们只要把
+    /// 表单序列化 → AES-128-CBC/ZeroPadding(key 固定 1234567887654321) → POST JSON。
+    ///
+    /// 返回的 `needsRebind` 为 true 时，`bindPath` 是服务端给的 `resultData`，
+    /// POST 它即完成设备绑定（官方页面里的「确认」就是 `$.post(resultData)`）。
+    func webLogin(username: String, password: String,
+                  profile: TerminalProfile) async -> Result {
+        let ctx: Context
+        do {
+            ctx = try await resolveContext(profile: profile)
+        } catch {
+            log("网页登录：准备上下文失败 \(error.localizedDescription)")
+            return Result(online: false,
+                          message: "找不到校园网 Portal：\(error.localizedDescription)",
+                          portalOrigin: "", serverMac: "", authState: 0)
+        }
+        var request = URLRequest(url: ctx.portal)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        request.setValue(GiWifiProtocol.browserUserAgent(for: profile), forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+
+        let html: String
+        do {
+            let (data, _) = try await session.data(for: request)
+            html = String(data: data, encoding: .utf8) ?? ""
+        } catch {
+            log("网页登录：打开登录页失败 \(error.localizedDescription)")
+            return Result(online: false,
+                          message: "打开校园网登录页失败：\(error.localizedDescription)",
+                          portalOrigin: ctx.portal.absoluteString,
+                          serverMac: ctx.userMac,
+                          authState: 0)
+        }
+        log("网页登录：登录页 \(html.count) 字节")
+
+        guard let form = GiWifiProtocol.parseLoginForm(html) else {
+            log("网页登录：页面里没找到 #loginForm 或 iv")
+            return Result(online: false,
+                          message: "登录页结构不认识（没找到登录表单），可能需要在网页里手动登录一次。",
+                          portalOrigin: ctx.portal.absoluteString,
+                          serverMac: ctx.userMac,
+                          authState: 0)
+        }
+        log("网页登录：隐藏域 \(form.pairs.count) 个，iv=\(form.iv)")
+
+        guard let body = GiWifiProtocol.webLoginBody(pairs: form.pairs,
+                                                     iv: form.iv,
+                                                     username: username,
+                                                     password: password) else {
+            log("网页登录：表单加密失败")
+            return Result(online: false, message: "表单加密失败",
+                          portalOrigin: ctx.portal.absoluteString,
+                          serverMac: ctx.userMac, authState: 0)
+        }
+
+        var components = URLComponents(url: ctx.portal, resolvingAgainstBaseURL: false)
+        components?.path = GiWifiProtocol.webLoginPath
+        components?.query = nil
+        guard let actionURL = components?.url else {
+            return Result(online: false, message: "登录地址拼接失败",
+                          portalOrigin: ctx.portal.absoluteString,
+                          serverMac: ctx.userMac, authState: 0)
+        }
+
+        func submit() async -> (status: String, info: String, data: [String: Any]?) {
+            var req = URLRequest(url: actionURL)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 15
+            req.setValue("application/json;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+            req.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+            req.setValue("application/json, text/javascript, */*; q=0.01",
+                         forHTTPHeaderField: "Accept")
+            req.setValue(GiWifiProtocol.browserUserAgent(for: profile), forHTTPHeaderField: "User-Agent")
+            req.setValue("\(ctx.portal.scheme ?? "http")://\(ctx.portal.host ?? "")/gportal/web/login",
+                         forHTTPHeaderField: "Referer")
+            req.httpBody = Data(body.utf8)
+            do {
+                let (data, response) = try await session.data(for: req)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let text = String(data: data, encoding: .utf8) ?? ""
+                log("网页登录：POST \(actionURL.path) → HTTP \(code)，\(text.count) 字节")
+                guard let parsed = Self.parseLoginResponse(text) else {
+                    log("网页登录：响应不是 JSON：\(text.prefix(160))")
+                    return ("", "响应解析失败：\(text.prefix(80))", nil)
+                }
+                return parsed
+            } catch {
+                log("网页登录：提交失败 \(error.localizedDescription)")
+                return ("", "提交失败：\(error.localizedDescription)", nil)
+            }
+        }
+
+        var result = await submit()
+        var info = result.info
+        var data = result.data
+
+        // 124 = 账号已绑定其它设备，服务端给出 resultData，POST 它即完成换绑。
+        if let code = data?["resultCode"] as? String, code == "124",
+           let bindPath = data?["resultData"] as? String, !bindPath.isEmpty {
+            log("网页登录：服务端要求换绑设备，POST \(bindPath)")
+            _ = await completeBind(portal: ctx.portal, path: bindPath, profile: profile)
+            result = await submit()
+            info = result.info
+            data = result.data
+        }
+
+        let status = result.status
+        let resultCode = data?["resultCode"] as? String ?? ""
+        let resultData = data?["resultData"] as? String ?? ""
+        let ok = !status.isEmpty && status != "0"
+
+        if ok {
+            log("网页登录：成功 \(info)")
+            return Result(online: true, message: info.isEmpty ? "登录成功" : info,
+                          portalOrigin: ctx.portal.absoluteString,
+                          serverMac: ctx.userMac, authState: 2)
+        }
+
+        log("网页登录：失败 status=\(status) code=\(resultCode) info=\(info)")
+        var message = info.isEmpty ? "登录失败" : info
+        if resultCode == "40", !resultData.isEmpty {
+            message += "\n服务端要求先补全资料，可点「内置网页」按提示完成。"
+        } else if resultCode == "114" {
+            message += "\n这个账号还没设过密码，请先在内置网页里设置一次。"
+        } else if resultCode == "152" {
+            message += "\n密码需要修改，请先在内置网页里改密码。"
+        }
+        return Result(online: false, message: message,
+                      portalOrigin: ctx.portal.absoluteString,
+                      serverMac: ctx.userMac, authState: 0,
+                      needsRebind: resultCode == "124", bindPath: resultData)
+    }
+
+    /// 网页登录响应：`{status, info, data:{resultCode, resultData}}`。
+    static func parseLoginResponse(_ text: String) -> (status: String, info: String, data: [String: Any]?)? {
+        guard let raw = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
+            return nil
+        }
+        let status = object["status"].map { "\($0)" } ?? ""
+        let info = (object["info"] as? String) ?? (object["msg"] as? String) ?? ""
+        let data = object["data"] as? [String: Any]
+        return (status, info, data)
+    }
+
     private func rebindMac(context: Context, username: String, password: String,
                            profile: TerminalProfile, appUuid: String) async -> PortalResponse? {
         var fields: [String: String] = [
