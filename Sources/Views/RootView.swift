@@ -192,6 +192,26 @@ struct RootView: View {
                 }
                 .buttonStyle(FlatButtonStyle(tint: Flat.accent, filled: false, height: 42))
             }
+
+            // 常驻入口：账号绑在别的设备上（43/203）时点这里换绑到本机
+            Button {
+                Task { await store.rebindDevice() }
+            } label: {
+                HStack(spacing: 8) {
+                    if store.state == .connecting && store.rebinding {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(Flat.orange)
+                    } else {
+                        Image(systemName: "iphone.and.arrow.forward")
+                    }
+                    Text(store.needsRebind ? "换绑到本机（需要确认）" : "换绑到本机")
+                        .font(.footnote.weight(.medium))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FlatButtonStyle(tint: Flat.orange, filled: store.needsRebind, height: 42))
+            .disabled(store.state == .connecting)
         }
     }
 
