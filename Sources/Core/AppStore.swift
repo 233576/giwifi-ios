@@ -288,6 +288,7 @@ final class AppStore: ObservableObject {
         detail = auto ? "自动重连中…" : "正在认证…"
         if !auto { logs.removeAll() }
         let profile = currentProfile
+        var autoBindTried = false
         append("==== \(auto ? "自动重连" : "开始认证")：\(currentAccountName) ====")
         append("设备档案：\(profile.kind.title)｜\(profile.subtitle)")
         append("浏览器 UA（\(profile.kind.title)）：\(profile.kind.userAgent)")
@@ -325,6 +326,30 @@ final class AppStore: ObservableObject {
         portal = result.portalOrigin
         if !result.serverMac.isEmpty { serverMac = result.serverMac }
         forceRebind = false
+        // 43/203：服务端把「确认绑定」的链接放在 data 里，GET 它即完成换绑。
+        // 这里自动做一次，再重新认证，用户不必再点按钮（点按钮仍然保留作为兜底）。
+        if !result.online, result.needsRebind, !result.bindPath.isEmpty, !autoBindTried {
+            autoBindTried = true
+            append("服务端要求确认绑定，自动提交：\(result.bindPath)")
+            if let portalURL = URL(string: result.portalOrigin) {
+                let ok = await client.completeBind(portal: portalURL,
+                                                   path: result.bindPath,
+                                                   profile: profile)
+                append(ok ? "绑定链接已提交，重新认证…" : "绑定链接提交失败，改走 reBindMac")
+            }
+            if let retry = await client.login(
+                username: settings.username,
+                password: settings.password,
+                profile: profile,
+                appUuid: settings.appUuid,
+                serviceType: settings.serviceType,
+                allowRebind: true
+            ) {
+                result = retry
+                portal = retry.portalOrigin.isEmpty ? portal : retry.portalOrigin
+                if !retry.serverMac.isEmpty { serverMac = retry.serverMac }
+            }
+        }
         if result.online {
             needsProfile = false
             needsWebAuth = false
