@@ -8,7 +8,7 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 - 最低系统：iOS 16.0
 - 设备：iPhone / iPad（arm64）
 - Bundle ID：`com.giwifi.ios`
-- 版本：1.2.0 (3)
+- 版本：1.3.4 (12)
 
 ---
 
@@ -18,6 +18,9 @@ GiWiFi 校园网认证的 iOS 原生客户端，对应 Android/Flutter 端 [xGiW
 | --- | --- |
 | 一键认证 | 探测 Portal → 账号层 `appLogin.bin` → `queryAuthState` → `authLogin` |
 | 自动重连 | 每 N 秒（默认 30，可调 10–300）查一次在线状态，掉线自动重新认证 |
+| 网页表单登录 | API 被网关拒绝时自动改走 `/gportal/Web/loginAction`（AES-128-CBC + ZeroPadding，body 为 form-urlencoded） |
+| 43 自动换绑 | 服务端返回 `bindSta` 链接时自动 GET 完成绑定并重新认证，无需手动点 |
+| 网关名记忆 | 第一次成功后记住 `nasName`（如 `GiWiFi_lnsfHG`），下次首个请求直接用，不再先撞 `CHALLENGE_ERR_DENY` |
 | 设备伪装 | 认证报文里的 `staModel` / `btype` / `staType` / `userMac` 由「设备档案」决定 |
 | 多账号 | 设置 → 账号管理，可存多个校园网账号，点谁就登录谁；每个账号独立 `appUuid` |
 | 多端切换 | 主页 / 设置里一键切换 **手机 / 平板 / 电脑**（型号统一用苹果），报文与网页 UA 一起变 |
@@ -165,3 +168,15 @@ scripts/                            构建、打包、图标、校验脚本
 本工程为独立 Swift 实现，未包含上游代码。协议行为参考 [xGiWifi](https://github.com/Mhenwa/xGiWifi)（MIT）与公开的 GiWiFi Portal 接口。
 
 请只在自己拥有账号的校园网内使用。
+
+---
+
+## 十一、几个只有真机才看得出来的坑（1.3.x 实测）
+
+| 现象 | 真实原因 | 处理 |
+| --- | --- | --- |
+| `resultCode=99 CHALLENGE_ERR_DENY` | `nasName` 与真实网关不一致（页面给 `GiWiFi_lnsf`，实际是 `GiWiFi_lnsfHG`） | 自动枚举后缀重试；成功后记住正确值 |
+| 换名重试立刻回 `102 操作过于频繁` | 两条 `authLogin` 落在同一秒，网关有最小间隔 | 每次重试前固定等 5.5 秒 |
+| 网页登录回 `CHALLENGE_ERR_DENY` | body 发成了 JSON；官方页面用 jQuery，序列化成 `data=..&iv=..` | 改 `form-urlencoded`，服务端就能进业务层 |
+| 网页登录回 `ac is empty` | `ac` 来自「被网关拦截那一跳」的会话上下文，直连登录页拿不到 | 优先走 API 认证，网页登录只作兜底 |
+| `43` 只有提示、没有按钮 | 43 的 `data` 里是 `/Giportal/index.php/Sta/bindSta?...`，GET 它即完成绑定 | 自动提交 + 重试；同时保留手动按钮 |
