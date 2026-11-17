@@ -159,13 +159,15 @@ final class GiWifiClient {
                                                    appUuid: appUuid) else {
                     return Result(online: false, message: "换绑请求失败",
                                   portalOrigin: context.portal.absoluteString,
-                                  serverMac: context.userMac, authState: nil)
+                                  serverMac: context.userMac, authState: nil,
+                                  needsRebind: true, bindPath: firstAuth.bindPath)
                 }
                 log("换绑：resultCode=\(rebind.resultCode.map(String.init) ?? "nil") \(rebind.message)")
                 guard rebind.isSuccess else {
                     return Result(online: false, message: rebind.displayText,
                                   portalOrigin: context.portal.absoluteString,
-                                  serverMac: context.userMac, authState: nil)
+                                  serverMac: context.userMac, authState: nil,
+                                  needsRebind: true, bindPath: firstAuth.bindPath)
                 }
 
                 log("换绑成功，等待网关同步 4 秒")
@@ -196,7 +198,8 @@ final class GiWifiClient {
                 }
                 return Result(online: false, message: retryAuth?.displayText ?? "换绑后认证未成功",
                               portalOrigin: context.portal.absoluteString,
-                              serverMac: context.userMac, authState: nil)
+                              serverMac: context.userMac, authState: nil,
+                              needsRebind: true, bindPath: firstAuth.bindPath)
             }
 
             if let firstAuth, !Self.isChallengeDenied(firstAuth) {
