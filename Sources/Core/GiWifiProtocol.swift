@@ -27,20 +27,25 @@ enum GiWifiProtocol {
     /// App Portal 接口统一 UA。
     static let apiUserAgent = "okhttp/3.8.0"
 
-    /// 按终端档案拼一个 Android 浏览器 UA。
+    /// 按终端类别返回浏览器 UA（只剩手机 / 平板 / 电脑三种，型号统一 Apple）。
     ///
-    /// 应用内 Portal 网页必须用这个 UA 出网：Safari 会带自己的 UA，
-    /// 服务端按 UA 判设备型号，设备绑定额度有限，UA 一变就可能被当成新设备。
-    /// `staModel` 的格式是 `品牌,型号,SDK,Android版本`。
+    /// 应用内 Portal 网页必须用真正的浏览器 UA：实测 curl / okhttp 的 UA 会被
+    /// Portal 直接拒成 403，拿不到页面里的 `nas_name`。用 Safari UA 出网后
+    /// 服务端按 UA 判设备，所以 UA 也要和档案（手机/平板/电脑）保持一致。
     static func browserUserAgent(for profile: TerminalProfile) -> String {
-        let parts = profile.staModel
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-        let brand = parts.count > 0 && !parts[0].isEmpty ? parts[0] : "samsung"
-        let model = parts.count > 1 && !parts[1].isEmpty ? parts[1] : "SM-T870"
-        let android = parts.count > 3 && !parts[3].isEmpty ? parts[3] : "14"
-        return "Mozilla/5.0 (Linux; Android \(android); \(model) Build/\(brand)_\(model)) "
-            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        profile.kind.userAgent
+    }
+
+    /// 给日志用：`手机 · iPhone` 之类的一句话描述。
+    static func userAgentSummary(for profile: TerminalProfile) -> String {
+        let kind = profile.kind
+        let device: String
+        switch kind {
+        case .phone: device = "iPhone"
+        case .pad: device = "iPad"
+        case .pc: device = "Mac"
+        }
+        return "\(kind.title) · \(device)"
     }
 
     /// 探测请求 UA（APK 内置的小米浏览器标识）。
