@@ -296,7 +296,7 @@ final class AppStore: ObservableObject {
             Task { @MainActor in self?.append(line) }
         }
 
-        let result = await client.login(
+        var result = await client.login(
             username: settings.username,
             password: settings.password,
             profile: profile,
@@ -304,6 +304,16 @@ final class AppStore: ObservableObject {
             serviceType: settings.serviceType,
             allowRebind: settings.autoRebind || forceRebind
         )
+
+        // API 认证被网关拒（CHALLENGE_ERR_DENY）时，改走官方网页表单登录：
+        // 页面自带 RSA 现签的 sign 与真实 nas_name，能绕开 API 通路的校验。
+        if let current = result, !current.online,
+           current.needsWebAuth || Self.looksLikeChallengeDenied(current.message) {
+            append("API 认证被网关拒绝，改走网页表单登录（/gportal/Web/loginAction）")
+            result = await client.webLogin(username: settings.username,
+                                           password: settings.password,
+                                           profile: profile)
+        }
 
         guard let result else {
             state = .failed
@@ -335,6 +345,52 @@ final class AppStore: ObservableObject {
 
     /// 用户在弹窗里点了「换绑到本机」：这一次强制走 reBindMac。
     private var forceRebind = false
+
+    /// 服务端错误文案里是否带 CHALLENGE_ERR_DENY。
+    private static func looksLikeChallengeDenied(_ text: String) -> Bool {
+        text.uppercased().contains("CHALLENGE")
+    }
+
+    /// 常驻按钮：直接用网页表单登录（不经 API 认证）。
+    func webLoginNow() async {
+        guard !settings.username.isEmpty else {
+            errorText = "请先在「设置 → 账号管理」添加校园网账号"
+            return
+        }
+        guard state != .connecting else { return }
+
+        persist()
+        state = .connecting
+        detail = "正在用网页表单登录…"
+        logs.removeAll()
+        let profile = currentProfile
+        append("==== 网页登录：\(currentAccountName) ====")
+        append("设备档案：\(profile.kind.title)｜\(profile.subtitle)")
+
+        let client = GiWifiClient(portalOverride: settings.portalOverride, nasName: settings.nasName) { [weak self] line in
+            Task { @MainActor in self?.append(line) }
+        }
+        let result = await client.webLogin(username: settings.username,
+                                           password: settings.password,
+                                           profile: profile)
+
+        portal = result.portalOrigin.isEmpty ? portal : result.portalOrigin
+        if !result.serverMac.isEmpty { serverMac = result.serverMac }
+        if result.online {
+            needsProfile = false
+            needsWebAuth = false
+            needsRebind = false
+            state = .online
+            detail = result.message.isEmpty ? "已认证，可以上网了" : result.message
+            append("网页登录成功：\(detail)")
+        } else {
+            state = .failed
+            detail = result.message.isEmpty ? "网页登录未通过" : result.message
+            needsRebind = result.needsRebind
+            rebindPath = result.bindPath
+            append("网页登录失败：\(detail)")
+        }
+    }
     /// 43 时服务端返回的绑定链接路径。
     private var rebindPath = ""
 
