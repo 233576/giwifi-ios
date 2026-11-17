@@ -2,10 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
 
-    @State private var username: String = ""
-    @State private var password: String = ""
     @State private var portal: String = GiWifiProtocol.defaultPortal
     @State private var nasName: String = ""
     @State private var editing: TerminalProfile?
@@ -17,19 +14,19 @@ struct SettingsView: View {
                 FlatBackground()
 
                 ScrollView {
-                    VStack(spacing: 16) {
-                        accountCard
-                        deviceCard
+                    VStack(spacing: 14) {
+                        accountsCard
+                        kindCard
                         portalCard
                         nasCard
                         protocolCard
                         keepOnlineCard
-                        profileCard
+                        customProfileCard
                         aboutCard
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 40)
+                    .padding(.top, 6)
+                    .padding(.bottom, 96)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -37,33 +34,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Flat.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                        .foregroundStyle(Flat.textSecondary)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        store.updateSettings { settings in
-                            settings.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
-                            settings.password = password
-                            settings.portalOverride = portal.trimmingCharacters(in: .whitespacesAndNewlines)
-                            settings.nasName = nasName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                        dismiss()
-                    } label: {
-                        Text("保存")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .flatPill(selected: true)
-                    }
-                }
-            }
             .onAppear {
-                username = store.settings.username
-                password = store.settings.password
                 portal = store.settings.portalOverride
                 nasName = store.settings.nasName
             }
@@ -77,81 +48,81 @@ struct SettingsView: View {
                 Text("下次认证会以新设备身份登录，可能需要重新换绑。")
             }
         }
-        .preferredColorScheme(.dark)
     }
 
-    // MARK: - 账号
+    // MARK: - 账号管理入口
 
-    private var accountCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FlatSectionHeader(title: "账号")
+    private var accountsCard: some View {
+        NavigationLink {
+            AccountsView().environmentObject(store)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Flat.accent)
+                    .frame(width: 24)
 
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Image(systemName: "person.fill")
-                        .font(.footnote)
-                        .foregroundStyle(Flat.textTertiary)
-                        .frame(width: 18)
-                    TextField("校园网账号（手机号）", text: $username)
-                        .textContentType(.username)
-                        .keyboardType(.numbersAndPunctuation)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .foregroundStyle(.white)
-                }
-                .flatField()
-
-                HStack(spacing: 10) {
-                    Image(systemName: "lock.fill")
-                        .font(.footnote)
-                        .foregroundStyle(Flat.textTertiary)
-                        .frame(width: 18)
-                    SecureField("密码", text: $password)
-                        .textContentType(.password)
-                        .foregroundStyle(.white)
-                }
-                .flatField()
-            }
-
-            Text("密码只保存在本机钥匙串。")
-                .font(.caption2)
-                .foregroundStyle(Flat.textTertiary)
-                .padding(.leading, 4)
-        }
-        .padding(16)
-        .flatCard()
-    }
-
-    // MARK: - 设备
-
-    private var deviceCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FlatSectionHeader(title: "设备")
-
-            HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("设备标识 appUuid")
-                        .font(.subheadline)
+                    Text("账号管理")
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(Flat.textPrimary)
-                    Text("…\(store.settings.appUuid.suffix(9))")
-                        .font(.system(.caption, design: .monospaced))
+                    Text(store.accounts.isEmpty
+                         ? "添加校园网账号，支持多个账号切换登录"
+                         : "\(store.accounts.count) 个账号 · 当前 \(store.currentAccountName)")
+                        .font(.caption2)
                         .foregroundStyle(Flat.textTertiary)
                 }
-                Spacer()
-                Button {
-                    confirmingReset = true
-                } label: {
-                    Text("重新生成")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .flatPill()
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(Flat.textTertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .flatCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 设备类别
+
+    private var kindCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            FlatSectionHeader(title: "上报设备")
+
+            HStack(spacing: 8) {
+                ForEach(DeviceKind.allCases) { kind in
+                    let selected = store.currentProfile.kind == kind
+                    Button {
+                        store.selectKind(kind)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: kind.symbol)
+                                .font(.system(size: 17, weight: .medium))
+                            Text(kind.title)
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(selected ? Flat.accent : Flat.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .flatPill(selected: selected)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
-            Text("appUuid 是 GiWiFi 识别终端的凭据，重新生成后需要重新认证一次。")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("上报值：\(store.currentProfile.staModel)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Flat.textSecondary)
+                Text("btype=\(store.currentProfile.btype) · staType=\(store.currentProfile.staType)")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Flat.textTertiary)
+            }
+
+            Text("只区分手机 / 平板 / 电脑，型号统一用苹果；内置网页登录的 UA 会跟着一起换。")
                 .font(.caption2)
                 .foregroundStyle(Flat.textTertiary)
         }
@@ -176,12 +147,14 @@ struct SettingsView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .foregroundStyle(.white)
+                    .onSubmit { applyPortal() }
             }
             .flatField()
 
             HStack(spacing: 10) {
                 Button {
                     portal = GiWifiProtocol.defaultPortal
+                    applyPortal()
                 } label: {
                     Text("恢复默认站点")
                         .font(.caption.weight(.medium))
@@ -191,15 +164,34 @@ struct SettingsView: View {
                         .flatPill()
                 }
                 .buttonStyle(.plain)
+
+                Button {
+                    applyPortal()
+                } label: {
+                    Text("保存")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .flatPill(selected: true)
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
             }
 
-            Text("留空则走 APK 原始探测（115.159.209.137 → 302 跳转）。填了就直连该站点，认证接口按同一主机拼接。")
+            Text("留空则走 APK 原始探测（115.159.209.137 → 302 跳转）。填了就直连该站点。")
                 .font(.caption2)
                 .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
         .flatCard()
+    }
+
+    private func applyPortal() {
+        let value = portal.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.updateSettings { $0.portalOverride = value }
+        store.append("Portal 站点已更新：\(value.isEmpty ? "自动探测" : value)")
     }
 
     // MARK: - 网关名
@@ -217,15 +209,22 @@ struct SettingsView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .foregroundStyle(.white)
+                    .onSubmit { applyNasName() }
             }
             .flatField()
 
-            Text("认证被拒 CHALLENGE_ERR_DENY 基本都是这里对不上。留空时先用 queryAuthState 返回的真实网关名，取不到再抓 Portal 页面；填了就只认这个值。")
+            Text("认证被拒 CHALLENGE_ERR_DENY 基本都是这里对不上。留空时先用 queryAuthState 返回的真实网关名，取不到再抓 Portal 页面。")
                 .font(.caption2)
                 .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
         .flatCard()
+    }
+
+    private func applyNasName() {
+        let value = nasName.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.updateSettings { $0.nasName = value }
+        store.append("网关名已更新：\(value.isEmpty ? "自动" : value)")
     }
 
     // MARK: - 协议参数
@@ -249,7 +248,32 @@ struct SettingsView: View {
                 }
             }
 
-            Text("默认 1，个别学校要求 2 或 3；认证失败可以先按学校要求调整。")
+            FlatDivider(inset: 0)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("设备标识 appUuid")
+                        .font(.subheadline)
+                        .foregroundStyle(Flat.textPrimary)
+                    Text("…\(store.settings.appUuid.suffix(9))")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Flat.textTertiary)
+                }
+                Spacer()
+                Button {
+                    confirmingReset = true
+                } label: {
+                    Text("重新生成")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .flatPill()
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("每个账号有独立的 appUuid，重新生成后需要重新认证一次。")
                 .font(.caption2)
                 .foregroundStyle(Flat.textTertiary)
         }
@@ -269,9 +293,7 @@ struct SettingsView: View {
                         set: { store.setAutoReconnect($0) }
                       ))
 
-            Rectangle()
-                .fill(Flat.stroke)
-                .frame(height: 1)
+            FlatDivider(inset: 0)
 
             toggleRow("设备冲突时自动换绑",
                       isOn: Binding(
@@ -279,9 +301,7 @@ struct SettingsView: View {
                         set: { value in store.updateSettings { $0.autoRebind = value } }
                       ))
 
-            Rectangle()
-                .fill(Flat.stroke)
-                .frame(height: 1)
+            FlatDivider(inset: 0)
 
             Stepper(value: Binding(
                 get: { Int(store.settings.reconnectInterval) },
@@ -314,15 +334,17 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 设备档案
+    // MARK: - 自定义档案
 
-    private var profileCard: some View {
+    private var customProfileCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                FlatSectionHeader(title: "设备档案")
+                FlatSectionHeader(title: "自定义机型")
                 Button {
-                    editing = TerminalProfile(name: "", btype: "1", staType: "phone",
-                                              staModel: "", macOverride: "")
+                    editing = TerminalProfile(name: "", btype: DeviceKind.phone.btype,
+                                              staType: DeviceKind.phone.staType,
+                                              staModel: DeviceKind.phone.defaultModel,
+                                              macOverride: "")
                 } label: {
                     Label("新建", systemImage: "plus.circle")
                         .font(.caption.weight(.medium))
@@ -334,15 +356,17 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            VStack(spacing: 8) {
-                ForEach(store.profiles) { profile in
-                    profileRow(profile)
+            if store.customProfiles.isEmpty {
+                Text("没有自定义机型。内置的手机 / 平板 / 电脑已经够用，需要特定型号再来这里加。")
+                    .font(.caption2)
+                    .foregroundStyle(Flat.textTertiary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(store.customProfiles) { profile in
+                        profileRow(profile)
+                    }
                 }
             }
-
-            Text("内置档案不可删除；点内置档案会复制一份再编辑。")
-                .font(.caption2)
-                .foregroundStyle(Flat.textTertiary)
         }
         .padding(16)
         .flatCard()
@@ -351,16 +375,12 @@ struct SettingsView: View {
     private func profileRow(_ profile: TerminalProfile) -> some View {
         let selected = profile.id == store.settings.selectedProfileID
         return Button {
-            if profile.isBuiltin {
-                editingProfileCopy(profile)
-            } else {
-                editing = profile
-            }
+            editing = profile
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: profile.staType == "pad" ? "ipad" : "iphone")
+                Image(systemName: profile.kind.symbol)
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(Flat.textSecondary)
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -381,7 +401,7 @@ struct SettingsView: View {
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.28))
+                        .foregroundStyle(Flat.textTertiary)
                 }
             }
             .padding(.horizontal, 12)
@@ -390,17 +410,15 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            if !profile.isBuiltin {
-                Button(role: .destructive) {
-                    store.deleteProfile(profile.id)
-                } label: {
-                    Label("删除", systemImage: "trash")
-                }
-            }
             Button {
                 store.selectProfile(profile.id)
             } label: {
                 Label("设为当前", systemImage: "checkmark")
+            }
+            Button(role: .destructive) {
+                store.deleteProfile(profile.id)
+            } label: {
+                Label("删除", systemImage: "trash")
             }
         }
     }
@@ -435,14 +453,6 @@ struct SettingsView: View {
         }
         .padding(16)
         .flatCard(fill: Flat.surfaceLow)
-    }
-
-    private func editingProfileCopy(_ profile: TerminalProfile) {
-        editing = TerminalProfile(name: profile.name + " 副本",
-                                  btype: profile.btype,
-                                  staType: profile.staType,
-                                  staModel: profile.staModel,
-                                  macOverride: profile.macOverride)
     }
 
     static var appVersion: String {
