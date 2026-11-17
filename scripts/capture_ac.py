@@ -58,6 +58,8 @@ def read_any(opener, url: str, ua: str, headers=None, data: bytes | None = None,
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace") if exc.fp else ""
         return exc.code, dict(exc.headers), body
+    except Exception as exc:  # noqa: BLE001  超时/被重置都算「没抓到」
+        return 0, {}, "NETERR: %s" % exc
 
 
 def portal_login(opener, ua: str, user: str, password: str, query: dict[str, str]) -> str:
@@ -84,6 +86,7 @@ def portal_login(opener, ua: str, user: str, password: str, query: dict[str, str
 
 
 def main() -> int:
+    global PORTAL
     ap = argparse.ArgumentParser()
     ap.add_argument("--user", required=True)
     ap.add_argument("--pass", dest="password", required=True)
@@ -92,20 +95,29 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    global PORTAL
     PORTAL = args.portal.rstrip("/")
     ua = UA[args.ua]
 
+    print("0) 预检：确认登录页能打开（拿不到表单就不敢注销，避免把你卡在断网状态）")
+    jar0 = http.cookiejar.CookieJar()
+    op0 = opener_with(jar0, follow=True)
+    code, _, html0 = read_any(op0, PORTAL + LOGIN_PAGE, ua, timeout=15)
+    if 'id="loginForm"' not in html0:
+        print("   预检失败：登录页 %d 字节，没有 loginForm。已中止，未做任何注销。" % len(html0))
+        return 2
+    print("   登录页正常（%d 字节），可以继续" % len(html0))
+
     print("1) 注销当前认证")
     if args.dry_run:
-        print("   [dry-run] 跳过")
+        print("   [dry-run] 只做了预检，不注销、不抓包、不登录。加上真实密码去掉 --dry-run 才会执行。")
+        return 0
     else:
         jar = http.cookiejar.CookieJar()
         op = opener_with(jar, follow=True)
         for path in ("/gportal/Web/logoutAction", "/gportal/web/logout"):
             code, _, text = read_any(op, PORTAL + path, ua, timeout=10)
             print("   %-32s HTTP %-3d %s" % (path, code, text[:120].replace("\n", " ")))
-            if code == 200 and code != 500:
+            if code == 200:
                 break
 
     print("2) 抓网关重定向（不跟随），找 ac / wlanacname / wlanuserip")
@@ -138,15 +150,24 @@ def main() -> int:
     if args.dry_run:
         print("   [dry-run] 跳过")
         return 0
-    for extra in (query, {}):
-        jar3 = http.cookiejar.CookieJar()
-        op3 = opener_with(jar3, follow=True)
-        result = portal_login(op3, ua, args.user, args.password, extra)
-        print("   参数 %-24s -> %s" % (list(extra)[:1] or "无", result))
-        if '"status":1' in result or "'status': 1" in result:
-            print("登录成功，网络应已恢复。")
-            return 0
-    print("4) 两条路都没成功，请把上面的输出发给我。")
+    import time
+    plans = [query] if query else []
+    plans.append({})
+    for extra in plans:
+        for attempt in range(1, 4):
+            jar3 = http.cookiejar.CookieJar()
+            op3 = opener_with(jar3, follow=True)
+            result = portal_login(op3, ua, args.user, args.password, extra)
+            print("   参数 %-22s 第 %d 次 -> %s" % (str(list(extra)[:1] or "无"), attempt, result))
+            if '"status":1' in result or "'status': 1" in result:
+                print("登录成功，网络应已恢复。")
+                return 0
+            if "102" in result or "频繁" in result:
+                print("   命中频率限制，等 7 秒重试")
+                time.sleep(7)
+                continue
+            break
+    print("4) 都没成功，请把上面的输出发给我。若已断网，用手机热点或等 1 分钟后重跑本脚本。")
     return 1
 
 
