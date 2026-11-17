@@ -58,6 +58,8 @@ final class GiWifiClient {
         var needsRebind: Bool = false
         /// 43 时服务端给的换绑链接（GET 即完成绑定）。
         var bindPath: String = ""
+        /// 本次真正用上的网关名，上层记下来，下次第一次就用对。
+        var nasName: String = ""
     }
 
     func login(username: String, password: String, profile: TerminalProfile,
@@ -115,7 +117,8 @@ final class GiWifiClient {
             if let firstAuth, firstAuth.isSuccess {
                 return Result(online: true, message: firstAuth.displayText,
                               portalOrigin: context.portal.absoluteString,
-                              serverMac: context.userMac, authState: firstAuth.authState)
+                              serverMac: context.userMac, authState: firstAuth.authState,
+                              nasName: context.nasName)
             }
 
             // CHALLENGE_ERR_DENY（99）：几乎都是 nasName 与实际网关不一致，
@@ -125,9 +128,11 @@ final class GiWifiClient {
                 let candidates = Array(Self.nasNameVariants(context.nasName).prefix(3))
                 log("nasName 候选：\(candidates.isEmpty ? "无" : candidates.joined(separator: ", "))")
                 for candidate in candidates {
-                    let throttled = firstAuth.resultCode == 102 || firstAuth.message.contains("频繁")
-                    log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试\(throttled ? "（等 5 秒避开频率限制）" : "")")
-                    if throttled { try? await Task.sleep(nanoseconds: 5_200_000_000) }
+                    // 网关对同一账号 + 同一 IP 的 authLogin 有最小间隔：
+                    // 收到 DENY 立刻换名重发，第二发会直接判 102「操作过于频繁」。
+                    // 所以每次重试前都等，不只是 102 才等。
+                    log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试（等 5.5 秒避开频率限制）")
+                    try? await Task.sleep(nanoseconds: 5_500_000_000)
                     var retryContext = context
                     retryContext.nasName = candidate
                     let retry = await authLogin(context: retryContext, username: username,
@@ -136,7 +141,8 @@ final class GiWifiClient {
                     if let retry, retry.isSuccess {
                         return Result(online: true, message: retry.displayText,
                                       portalOrigin: retryContext.portal.absoluteString,
-                                      serverMac: retryContext.userMac, authState: retry.authState)
+                                      serverMac: retryContext.userMac, authState: retry.authState,
+                                      nasName: retryContext.nasName)
                     }
                     // 只要结果不再是 CHALLENGE_ERR_DENY，就说明 nasName 已经对了，
                     // 剩下的是账号本身的问题（密码错、资料没补全等），继续换 nasName 没有意义。
@@ -149,7 +155,8 @@ final class GiWifiClient {
                                       authState: retry.authState,
                                       needsProfile: Self.needsProfileCompletion(retry),
                                       needsRebind: retry.requiresRebind,
-                                      bindPath: retry.bindPath)
+                                      bindPath: retry.bindPath,
+                                      nasName: retryContext.nasName)
                     }
                 }
             }
