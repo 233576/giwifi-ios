@@ -105,10 +105,10 @@ enum GiWifiProtocol {
         guard let encrypted = Crypto.aes128CBCZeroPadBase64(plaintext: serialized,
                                                             key: webLoginAESKey,
                                                             iv: iv) else { return nil }
-        let payload: [String: Any] = ["data": encrypted, "iv": iv]
-        guard let json = try? JSONSerialization.data(withJSONObject: payload, options: []),
-              let text = String(data: json, encoding: .utf8) else { return nil }
-        return text
+        // 关键：jQuery 的 $.ajax 默认 processData=true，会把 {data:..,iv:..} 序列化成
+        // form-urlencoded（data=xxx&iv=yyy），不是 JSON 字符串。发成 JSON 服务端读不到字段，
+        // 直接判非法 → 前端拿到 CHALLENGE_ERR_DENY。
+        return "data=" + Crypto.javaFormURLEncode(encrypted) + "&iv=" + Crypto.javaFormURLEncode(iv)
     }
 
     private static func matches(_ pattern: String, in text: String) -> [String] {
