@@ -54,6 +54,8 @@ final class GiWifiClient {
         var needsProfile: Bool = false
         /// 网关拒绝 API 认证（CHALLENGE_ERR_DENY），只能改走内置网页登录。
         var needsWebAuth: Bool = false
+        /// 服务端回 43/203：账号绑在别的设备上，需要确认换绑。
+        var needsRebind: Bool = false
     }
 
     func login(username: String, password: String, profile: TerminalProfile,
@@ -196,12 +198,17 @@ final class GiWifiClient {
             }
 
             if let firstAuth, !Self.isChallengeDenied(firstAuth) {
+                let bindConflict = allowRebind == false && firstAuth.requiresRebind
+                if bindConflict {
+                    log("检测到设备冲突（43/203），等待用户确认换绑")
+                }
                 return Result(online: false,
                               message: Self.guidance(for: firstAuth),
                               portalOrigin: context.portal.absoluteString,
                               serverMac: context.userMac,
                               authState: firstAuth.authState,
-                              needsProfile: Self.needsProfileCompletion(firstAuth))
+                              needsProfile: Self.needsProfileCompletion(firstAuth),
+                              needsRebind: bindConflict)
             }
 
             // 走到这里说明所有 nasName 候选都被 CHALLENGE_ERR_DENY 拒了。
@@ -393,7 +400,7 @@ final class GiWifiClient {
         case 102:
             return "请求太频繁，等 5 秒再试（102）：\(original)"
         case 203, 43:
-            return "该账号已绑定其它设备（\(response.resultCode ?? -1)）：\(original)"
+            return "该账号已绑定其它设备（\(response.resultCode ?? -1)）：\(original)\n\n要在这台设备上继续用，需要把账号换绑过来 —— 点下面的「换绑到本机」确认即可。"
         default:
             return original.isEmpty ? "认证未通过（resultCode=\(response.resultCode ?? -1)）" : original
         }
