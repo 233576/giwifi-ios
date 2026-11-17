@@ -7,7 +7,7 @@ struct GiWiFiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AppShell()
                 .environmentObject(store)
                 .onAppear { store.restore() }
                 .onChange(of: scenePhase) { phase in
