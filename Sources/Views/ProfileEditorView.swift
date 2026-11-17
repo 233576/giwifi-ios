@@ -9,8 +9,7 @@ struct ProfileEditorView: View {
     let profile: TerminalProfile?
 
     @State private var name = ""
-    @State private var btype = "1"
-    @State private var staType = "phone"
+    @State private var kind: DeviceKind = .phone
     @State private var manufacturer = ""
     @State private var model = ""
     @State private var sdk = ""
@@ -86,19 +85,28 @@ struct ProfileEditorView: View {
             }
             .flatField()
 
-            Picker("类型 btype", selection: $btype) {
-                Text("1 · 手机").tag("1")
-                Text("2 · 平板").tag("2")
+            HStack(spacing: 8) {
+                ForEach(DeviceKind.allCases) { option in
+                    let selected = kind == option
+                    Button {
+                        select(option)
+                    } label: {
+                        VStack(spacing: 5) {
+                            Image(systemName: option.symbol)
+                                .font(.system(size: 15, weight: .medium))
+                            Text(option.title)
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(selected ? Flat.accent : Flat.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .flatPill(selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .pickerStyle(.segmented)
 
-            Picker("类别 staType", selection: $staType) {
-                Text("phone").tag("phone")
-                Text("pad").tag("pad")
-            }
-            .pickerStyle(.segmented)
-
-            Text("btype 与 staType 必须匹配：手机 1/phone，平板 2/pad。")
+            Text("btype=\(kind.btype) · staType=\(kind.staType)：GiWiFi 只认手机 / 平板 / 电脑三类。")
                 .font(.caption2)
                 .foregroundStyle(Flat.textTertiary)
         }
@@ -218,19 +226,30 @@ struct ProfileEditorView: View {
             sdk = parts[2]
             release = parts[3]
         }
-        btype = preset.btype
-        staType = preset.staType
+        kind = preset.kind
         if name.isEmpty { name = preset.name }
+    }
+
+    /// 切换类别时把机型描述换成该类别的默认值（苹果机型）。
+    private func select(_ option: DeviceKind) {
+        kind = option
+        let parts = option.defaultModel.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 4 {
+            manufacturer = parts[0]
+            model = parts[1]
+            sdk = parts[2]
+            release = parts[3]
+        }
+        if name.isEmpty { name = option.title }
     }
 
     private func fill() {
         guard let profile else {
-            if name.isEmpty { apply(TerminalProfile.android) }
+            if name.isEmpty { apply(TerminalProfile.phone) }
             return
         }
         name = profile.name
-        btype = profile.btype
-        staType = profile.staType
+        kind = profile.kind
         macOverride = profile.macOverride
         let parts = profile.staModel.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
         if parts.count == 4 {
@@ -246,15 +265,15 @@ struct ProfileEditorView: View {
         if let profile, !profile.isBuiltin {
             var updated = profile
             updated.name = trimmedName
-            updated.btype = btype
-            updated.staType = staType
+            updated.btype = kind.btype
+            updated.staType = kind.staType
             updated.staModel = staModelValue
             updated.macOverride = macOverride.trimmingCharacters(in: .whitespaces)
             store.updateProfile(updated)
         } else {
             let created = TerminalProfile(name: trimmedName,
-                                          btype: btype,
-                                          staType: staType,
+                                          btype: kind.btype,
+                                          staType: kind.staType,
                                           staModel: staModelValue,
                                           macOverride: macOverride.trimmingCharacters(in: .whitespaces))
             store.addProfile(created)
