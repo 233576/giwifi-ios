@@ -125,8 +125,9 @@ final class GiWifiClient {
                 let candidates = Array(Self.nasNameVariants(context.nasName).prefix(3))
                 log("nasName 候选：\(candidates.isEmpty ? "无" : candidates.joined(separator: ", "))")
                 for candidate in candidates {
-                    log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试（等 5 秒避开频率限制）")
-                    try? await Task.sleep(nanoseconds: 5_200_000_000)
+                    let throttled = firstAuth.resultCode == 102 || firstAuth.message.contains("频繁")
+                    log("认证被拒（\(firstAuth.message)），改用 nasName=\(candidate) 重试\(throttled ? "（等 5 秒避开频率限制）" : "")")
+                    if throttled { try? await Task.sleep(nanoseconds: 5_200_000_000) }
                     var retryContext = context
                     retryContext.nasName = candidate
                     let retry = await authLogin(context: retryContext, username: username,
@@ -140,12 +141,15 @@ final class GiWifiClient {
                     // 只要结果不再是 CHALLENGE_ERR_DENY，就说明 nasName 已经对了，
                     // 剩下的是账号本身的问题（密码错、资料没补全等），继续换 nasName 没有意义。
                     if let retry, !Self.isChallengeDenied(retry) {
+                        // 43/203 要带出 bindPath，否则上层拿不到换绑链接。
                         return Result(online: false,
                                       message: Self.guidance(for: retry),
                                       portalOrigin: retryContext.portal.absoluteString,
                                       serverMac: retryContext.userMac,
                                       authState: retry.authState,
-                                      needsProfile: Self.needsProfileCompletion(retry))
+                                      needsProfile: Self.needsProfileCompletion(retry),
+                                      needsRebind: retry.requiresRebind,
+                                      bindPath: retry.bindPath)
                     }
                 }
             }
