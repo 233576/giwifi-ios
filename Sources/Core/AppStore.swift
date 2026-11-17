@@ -49,6 +49,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var needsProfile = false
     /// 网关拒绝了 API 认证（CHALLENGE_ERR_DENY），此时只能走内置网页登录。
     @Published private(set) var needsWebAuth = false
+    @Published private(set) var needsRebind = false
 
     private var autoTask: Task<Void, Never>?
     private static let settingsKey = "giwifi.settings.v2"
@@ -299,7 +300,7 @@ final class AppStore: ObservableObject {
             profile: profile,
             appUuid: settings.appUuid,
             serviceType: settings.serviceType,
-            allowRebind: settings.autoRebind
+            allowRebind: settings.autoRebind || forceRebind
         )
 
         guard let result else {
@@ -311,9 +312,11 @@ final class AppStore: ObservableObject {
 
         portal = result.portalOrigin
         if !result.serverMac.isEmpty { serverMac = result.serverMac }
+        forceRebind = false
         if result.online {
             needsProfile = false
             needsWebAuth = false
+            needsRebind = false
             state = .online
             detail = result.message.isEmpty ? "已认证，可以上网了" : result.message
             append("认证成功：\(detail)")
@@ -322,8 +325,21 @@ final class AppStore: ObservableObject {
             detail = result.message.isEmpty ? "认证未通过" : result.message
             needsProfile = result.needsProfile
             needsWebAuth = result.needsWebAuth
+            needsRebind = result.needsRebind
             append("认证失败：\(detail)")
         }
+    }
+
+    /// 用户在弹窗里点了「换绑到本机」：这一次强制走 reBindMac。
+    private var forceRebind = false
+
+    /// 确认把账号换绑到当前设备（服务端 43/203 时使用）。
+    func confirmRebind() async {
+        errorText = nil
+        needsRebind = false
+        forceRebind = true
+        append("用户确认换绑设备，开始 reBindMac")
+        await login()
     }
 
     /// 只查在线状态，不触发认证。
@@ -433,6 +449,7 @@ final class AppStore: ObservableObject {
     }
 
     func clearError() {
+        needsRebind = false
         errorText = nil
     }
 
