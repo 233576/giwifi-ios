@@ -50,10 +50,15 @@ struct RootView: View {
                 get: { store.errorText != nil },
                 set: { if !$0 { store.clearError() } }
             )) {
+                if store.needsRebind {
+                    Button("换绑到本机") {
+                        Task { await store.confirmRebind() }
+                    }
+                }
                 if store.needsProfile || store.needsWebAuth {
                     Button("内置网页登录") { openPortal() }
                 }
-                Button("好", role: .cancel) { store.clearError() }
+                Button("取消", role: .cancel) { store.clearError() }
             } message: {
                 Text(store.errorText ?? "")
             }
