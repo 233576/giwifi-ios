@@ -14,8 +14,8 @@ settings:
     CODE_SIGNING_REQUIRED: NO
     CODE_SIGN_IDENTITY: ""
     DEVELOPMENT_TEAM: ""
-    MARKETING_VERSION: "1.2.3"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "1.2.4"
+    CURRENT_PROJECT_VERSION: "7"
 
 targets:
   GiWiFi:
@@ -37,8 +37,8 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: GiWiFi 助手
-        CFBundleShortVersionString: "1.2.3"
-        CFBundleVersion: "6"
+        CFBundleShortVersionString: "1.2.4"
+        CFBundleVersion: "7"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
